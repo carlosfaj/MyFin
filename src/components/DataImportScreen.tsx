@@ -78,47 +78,9 @@ export function DataImportScreen() {
               Subir CSV
             </Button>
           </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-all cursor-pointer hover:scale-105">
-          <CardHeader>
-            <FileJson className="h-8 w-8 text-warning" />
-            <CardTitle className="text-lg">JSON (.json)</CardTitle>
-            <CardDescription>JavaScript Object Notation</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button 
-              className="w-full rounded-lg" 
-              variant="outline"
-              onClick={() => handleFileUpload('json')}
-              disabled={importing}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              Subir JSON
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-all cursor-pointer hover:scale-105">
-          <CardHeader>
-            <FileText className="h-8 w-8 text-destructive" />
-            <CardTitle className="text-lg">XML (.xml)</CardTitle>
-            <CardDescription>Extensible Markup Language</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button 
-              className="w-full rounded-lg" 
-              variant="outline"
-              onClick={() => handleFileUpload('xml')}
-              disabled={importing}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              Subir XML
-            </Button>
-          </CardContent>
-        </Card>
+        </Card>        
       </div>
-
+      
       <Card>
         <CardHeader>
           <CardTitle>Instrucciones de Importación</CardTitle>
