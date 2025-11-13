@@ -132,8 +132,30 @@ export function DataImportScreen() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+<<<<<<< HEAD
+=======
 
+        <Card className="hover:shadow-lg transition-all cursor-pointer hover:scale-105">
+          <CardHeader>
+            <FileText className="h-8 w-8 text-primary" />
+            <CardTitle className="text-lg">CSV (.csv)</CardTitle>
+            <CardDescription>Valores separados por coma</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button 
+              className="w-full rounded-lg" 
+              variant="outline"
+              onClick={() => handleFileUpload('csv')}
+              disabled={importing}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Subir CSV
+            </Button>
+          </CardContent>
+        </Card>        
+>>>>>>> f09bad98dcca16eadb92516d30f69250c226cd41
+      </div>
+      
       <Card>
         <CardHeader>
           <CardTitle>Instrucciones de Importación</CardTitle>
