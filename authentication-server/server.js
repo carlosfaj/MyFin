@@ -20,7 +20,8 @@ app.post("/login", (req, res) =>
     }
 }); 
 
-app.listen(4000, () => 
-{
-    console.log("Auth server running on port 4000");
-}); 
+const AUTH_PORT = process.env.AUTH_PORT ? Number(process.env.AUTH_PORT) : 4001;
+
+app.listen(AUTH_PORT, () => {
+    console.log(`Auth server running on port ${AUTH_PORT}`);
+});
