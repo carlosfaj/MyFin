@@ -1,26 +1,98 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
-import { Upload, FileSpreadsheet, FileJson, FileText, CheckCircle2, AlertCircle } from "lucide-react";
+import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "./ui/alert";
+import * as XLSX from "xlsx";
 
 export function DataImportScreen() {
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [previewData, setPreviewData] = useState<any[][]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [accept, setAccept] = useState<string>(".xlsx,.xls");
+  const [sheets, setSheets] = useState<string[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState<string | null>(null);
+  const workbookRef = useRef<XLSX.WorkBook | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const handleFileUpload = () => {
+    setAccept(".xlsx,.xls");
 
-  const handleFileUpload = (fileType: string) => {
+    setError(null);
+    setPreviewData([]);
+    setSuccess(false);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
     setImporting(true);
-    setUploadedFile(fileType);
-    
-    setTimeout(() => {
-      setImporting(false);
+    setUploadedFile(file.name);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+
+      const workbook = XLSX.read(arrayBuffer, { type: "array" });
+
+      if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+        throw new Error("No se encontraron hojas en el archivo.");
+      }
+
+      workbookRef.current = workbook;
+      setSheets(workbook.SheetNames);
+
+      const firstSheet = workbook.SheetNames[0];
+      setSelectedSheet(firstSheet);
+      const worksheet = workbook.Sheets[firstSheet];
+      const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+      setPreviewData(rows);
       setSuccess(true);
-    }, 2000);
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || "Error al procesar el archivo");
+      setSuccess(false);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleSheetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const sheetName = e.target.value;
+    setSelectedSheet(sheetName);
+    setError(null);
+    setSuccess(false);
+
+    const wb = workbookRef.current;
+    if (!wb) return;
+
+    try {
+      const ws = wb.Sheets[sheetName];
+      if (!ws) throw new Error("Hoja no encontrada en el workbook.");
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      setPreviewData(rows);
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || "Error al cambiar de hoja");
+    }
   };
 
   return (
     <div className="space-y-6 p-6">
+      {/* Hidden file input used to pick files */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={accept}
+        className="hidden"
+        onChange={handleFileChange}
+      />
       <div>
         <h1 className="text-3xl font-bold">Importar Datos Financieros</h1>
         <p className="text-muted-foreground">
@@ -52,68 +124,11 @@ export function DataImportScreen() {
           <CardContent>
             <Button 
               className="w-full rounded-lg" 
-              onClick={() => handleFileUpload('xlsx')}
+              onClick={handleFileUpload}
               disabled={importing}
             >
               <Upload className="mr-2 h-4 w-4" />
               Subir XLSX
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-all cursor-pointer hover:scale-105">
-          <CardHeader>
-            <FileText className="h-8 w-8 text-primary" />
-            <CardTitle className="text-lg">CSV (.csv)</CardTitle>
-            <CardDescription>Valores separados por coma</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button 
-              className="w-full rounded-lg" 
-              variant="outline"
-              onClick={() => handleFileUpload('csv')}
-              disabled={importing}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              Subir CSV
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-all cursor-pointer hover:scale-105">
-          <CardHeader>
-            <FileJson className="h-8 w-8 text-warning" />
-            <CardTitle className="text-lg">JSON (.json)</CardTitle>
-            <CardDescription>JavaScript Object Notation</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button 
-              className="w-full rounded-lg" 
-              variant="outline"
-              onClick={() => handleFileUpload('json')}
-              disabled={importing}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              Subir JSON
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-all cursor-pointer hover:scale-105">
-          <CardHeader>
-            <FileText className="h-8 w-8 text-destructive" />
-            <CardTitle className="text-lg">XML (.xml)</CardTitle>
-            <CardDescription>Extensible Markup Language</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button 
-              className="w-full rounded-lg" 
-              variant="outline"
-              onClick={() => handleFileUpload('xml')}
-              disabled={importing}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              Subir XML
             </Button>
           </CardContent>
         </Card>
@@ -190,40 +205,69 @@ export function DataImportScreen() {
               <FileSpreadsheet className="mr-2 h-4 w-4" />
               Descargar Plantilla Excel
             </Button>
-            <Button variant="outline" className="rounded-lg">
-              <FileText className="mr-2 h-4 w-4" />
-              Descargar Plantilla CSV
-            </Button>
           </div>
         </CardContent>
       </Card>
 
       {uploadedFile && (
-        <Card className="border-primary">
+        <Card className="border-primary h-[70vh]">
           <CardHeader>
             <CardTitle>Vista Previa de Datos Importados</CardTitle>
-            <CardDescription>Archivo: ejemplo_estados_financieros.{uploadedFile}</CardDescription>
+            <CardDescription>Archivo: {uploadedFile}</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-2 text-sm">
+          <CardContent className="h-full flex flex-col">
+            <div className="space-y-4 text-sm flex-1 flex flex-col">
+              {sheets && sheets.length > 1 && (
+                <div className="flex items-center gap-3">
+                  <label className="text-sm">Hoja:</label>
+                      <select
+                        value={selectedSheet ?? ""}
+                        onChange={handleSheetChange}
+                        className="border rounded px-2 py-1 text-sm"
+                      >
+                        {sheets.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                </div>
+              )}
               <div className="flex justify-between p-2 bg-muted rounded">
-                <span>Total de registros:</span>
-                <span className="font-semibold">47</span>
+                <span>Total de filas:</span>
+                <span className="font-semibold">{previewData.length}</span>
               </div>
-              <div className="flex justify-between p-2 bg-muted rounded">
-                <span>Periodos detectados:</span>
-                <span className="font-semibold">2024, 2023</span>
+
+              <div className="overflow-auto border rounded flex-1">
+                {previewData && previewData.length > 0 ? (
+                  <table className="min-w-max text-sm table-auto border-collapse w-full">
+                    <thead>
+                      <tr>
+                        {previewData[0].map((col: any, idx: number) => (
+                          <th key={idx} className="border p-2 text-left bg-muted break-words whitespace-normal">{col || `Col ${idx+1}`}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewData.map((row, rIdx) => (
+                        <tr key={rIdx} className={rIdx % 2 === 0 ? "bg-white" : "bg-muted"}>
+                          {row.map((cell: any, cIdx: number) => (
+                            <td key={cIdx} className="border p-2 break-words whitespace-normal">{cell !== null && cell !== undefined ? String(cell) : ""}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-muted-foreground p-2">No se pudo generar una vista previa o el archivo está vacío.</div>
+                )}
               </div>
-              <div className="flex justify-between p-2 bg-muted rounded">
-                <span>Estados financieros:</span>
-                <span className="font-semibold">Balance General, Estado de Resultados</span>
-              </div>
-              <div className="flex justify-between p-2 bg-success/10 rounded">
-                <span className="text-success">Estado de validación:</span>
-                <span className="font-semibold text-success flex items-center gap-1">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Validado correctamente
-                </span>
+
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => { /* placeholder: trigger import flow to backend */ }}>
+                  Importar datos
+                </Button>
+                <Button variant="ghost" onClick={() => { setPreviewData([]); setUploadedFile(null); setSuccess(false); }}>
+                  Cancelar
+                </Button>
               </div>
             </div>
           </CardContent>
