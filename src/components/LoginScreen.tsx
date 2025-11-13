@@ -15,28 +15,23 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try
-    {
-      const res = await fetch("http://localhost:4000/login", 
-        {
-          method: "POST", 
-          headers: { "content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        }); 
+    try {
+      const res = await fetch("http://localhost:4000/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
 
-        const data = await res.json();
-        if (res.ok) 
-        {
-          onLogin(false);
-        } else 
-        {
-          alert(data.message);
-        }
-    }catch (error)
-    {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        onLogin(false);
+      } else {
+        alert(data.message || "Credenciales inválidas");
+      }
+    } catch (error) {
       alert("Error de conexión con el login.");
       console.error("Login error:", error);
-    }    
+    }
   };
 
   return (
