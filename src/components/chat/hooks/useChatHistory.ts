@@ -20,7 +20,13 @@ export function useChatHistory(state: ReturnType<typeof import('./useChatState')
     (loadChatMessages as any).__latestRequestedId = requestedId;
     setLoadingChat(true);
     try {
-      const msgsResp = await fetch(`http://localhost:4000/api/chats/${id}/messages`, { signal: controller.signal });
+      const url = `http://localhost:4000/api/chats/${id}/messages`;
+      const msgsResp = await fetch(url, { signal: controller.signal });
+      if (!msgsResp.ok) {
+        let bodyText = '';
+        try { bodyText = await msgsResp.text(); } catch (_) {}
+        console.error('[API] GET', url, 'status=', msgsResp.status, 'body=', String(bodyText).slice(0,200));
+      }
       const list = msgsResp.ok ? await msgsResp.json() : [];
       const mapped: Message[] = list.map((m: any, idx: number) => ({ id: idx + 1, sender: m.sender === "ai" ? "ai" : "user", text: m.text, timestamp: new Date(m.createdAt || Date.now()) }));
       if (mapped.length === 0) mapped.push({ id: 1, sender: "ai", text: "Hola, soy Finny, tu asistente financiero. ¿En qué puedo ayudarte hoy?", timestamp: new Date() } as any);
@@ -43,7 +49,13 @@ export function useChatHistory(state: ReturnType<typeof import('./useChatState')
 
   const refreshChats = useCallback(async () => {
     try {
-      const listResp = await fetch(`http://localhost:4000/api/chats?userId=${encodeURIComponent(userIdRef.current)}`);
+      const url = `http://localhost:4000/api/chats?userId=${encodeURIComponent(userIdRef.current)}`;
+      const listResp = await fetch(url);
+      if (!listResp.ok) {
+        let bodyText = '';
+        try { bodyText = await listResp.text(); } catch (_) {}
+        console.error('[API] GET', url, 'status=', listResp.status, 'body=', String(bodyText).slice(0,200));
+      }
       const data = listResp.ok ? await listResp.json() : [];
       setChats(data);
       return data;
@@ -57,8 +69,14 @@ export function useChatHistory(state: ReturnType<typeof import('./useChatState')
     (createNewConversation as any).__creating = true;
     setLoadingChat(true);
     try {
-      const resp = await fetch("http://localhost:4000/api/chats", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Nueva conversación", userId: userIdRef.current, userName: state.userNameRef.current }) });
-      if (!resp.ok) throw new Error("No se pudo crear chat");
+      const url = "http://localhost:4000/api/chats";
+      const resp = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Nueva conversación", userId: userIdRef.current, userName: state.userNameRef.current }) });
+      if (!resp.ok) {
+        let bodyText = '';
+        try { bodyText = await resp.text(); } catch (_) {}
+        console.error('[API] POST', url, 'status=', resp.status, 'body=', String(bodyText).slice(0,200));
+        throw new Error("No se pudo crear chat");
+      }
       const data = await resp.json();
       const id = String(data._id || "");
       if (id) {
@@ -87,10 +105,14 @@ export function useChatHistory(state: ReturnType<typeof import('./useChatState')
     const confirmDelete = window.confirm("¿Eliminar esta conversación? Esta acción no se puede deshacer.");
     if (!confirmDelete) return;
     try {
-      const resp = await fetch(`http://localhost:4000/api/chats/${c._id}`, { method: 'DELETE' });
+      const url = `http://localhost:4000/api/chats/${c._id}`;
+      const resp = await fetch(url, { method: 'DELETE' });
       let respJson = null;
       try { respJson = await resp.json(); } catch {}
       console.debug('[chat] delete response', c._id, resp.status, respJson);
+      if (!resp.ok) {
+        console.error('[API] DELETE', url, 'status=', resp.status, 'body=', JSON.stringify(respJson).slice(0,200));
+      }
       if (resp.ok) {
         const updated = await refreshChats();
         if (c._id === state.chatId) {
@@ -122,7 +144,13 @@ export function useChatHistory(state: ReturnType<typeof import('./useChatState')
     localStorage.setItem("myfin_userName", name);
     if (state.chatId) {
       try {
-        await fetch(`http://localhost:4000/api/chats/${state.chatId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userName: name }) });
+        const url = `http://localhost:4000/api/chats/${state.chatId}`;
+        const _patchResp = await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userName: name }) });
+        if (!_patchResp.ok) {
+          let bodyText = '';
+          try { bodyText = await _patchResp.text(); } catch (_) {}
+          console.error('[API] PATCH', url, 'status=', _patchResp.status, 'body=', String(bodyText).slice(0,200));
+        }
         await refreshChats();
         state.setErrorMsg(null);
         return true;

@@ -40,12 +40,67 @@ export function useChatActions(state: ReturnType<typeof import('./useChatState')
 
     try {
       if (chatId) {
-        const resp = await fetch(`http://localhost:4000/api/chats/${chatId}/messages`, {
+        // Validar que chatId aparenta ser un ObjectId (24 hex chars). Si no, crear nueva conversación.
+        const oidRx = /^[a-fA-F0-9]{24}$/;
+        let targetChatId = chatId;
+        if (!oidRx.test(String(chatId))) {
+          console.warn('[chat] chatId inválido:', chatId, 'intentando crear nueva conversación');
+          try {
+            const newId = await history.createNewConversation();
+            if (newId) targetChatId = newId;
+            else {
+              console.warn('[chat] No se pudo crear nueva conversación; usando respuesta local.');
+              const aiMessage: Message = { id: messages.length + 2, sender: "ai", text: findResponse(input), timestamp: new Date() };
+              setMessages((prev: Message[]) => [...prev, aiMessage]);
+              return;
+            }
+          } catch (err) {
+            console.error('[chat] error creando conversación:', err);
+            const aiMessage: Message = { id: messages.length + 2, sender: "ai", text: findResponse(input), timestamp: new Date() };
+            setMessages((prev: Message[]) => [...prev, aiMessage]);
+            return;
+          }
+        }
+
+        const url = `http://localhost:4000/api/chats/${targetChatId}/messages`;
+        let resp = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt: input, userId: state.userIdRef.current }),
         });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        if (!resp.ok) {
+          let bodyText = '';
+          try { bodyText = await resp.text(); } catch (_) {}
+          console.error('[API] POST', url, 'status=', resp.status, 'body=', String(bodyText).slice(0,200));
+          // Si recibimos 404 (chat no encontrado), intentar crear nueva conversación y reenviar
+          if (resp.status === 404) {
+            console.warn('[chat] server returned 404; intentando crear nueva conversación y reenviar');
+            try {
+              const newId = await history.createNewConversation();
+              if (newId && newId !== targetChatId) {
+                const retryUrl = `http://localhost:4000/api/chats/${newId}/messages`;
+                const retryResp = await fetch(retryUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ prompt: input, userId: state.userIdRef.current }),
+                });
+                if (retryResp.ok) {
+                  resp = retryResp;
+                } else {
+                  let rb = '';
+                  try { rb = await retryResp.text(); } catch (_) {}
+                  console.error('[chat] retry failed', retryUrl, retryResp.status, rb);
+                  throw new Error(`HTTP ${retryResp.status}`);
+                }
+              }
+            } catch (err) {
+              console.error('[chat] error creando/reenviando:', err);
+              throw err;
+            }
+          } else {
+            throw new Error(`HTTP ${resp.status}`);
+          }
+        }
         const data = await resp.json();
         const aiText = data?.ai?.text || findResponse(input);
         const aiMessage: Message = { id: messages.length + 2, sender: "ai", text: aiText, timestamp: new Date() };
@@ -71,18 +126,7 @@ export function useChatActions(state: ReturnType<typeof import('./useChatState')
     navigator.clipboard?.writeText(message.text).then(() => {
       state.setCopiedId(message.id);
       setTimeout(() => state.setCopiedId(null), 1400);
-    }).catch(() => {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = message.text;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
-        state.setCopiedId(message.id);
-        setTimeout(() => state.setCopiedId(null), 1400);
-      } catch {}
-    });
+    }).catch(() => {});
   };
 
   const handleQuestionClick = (question: string) => {

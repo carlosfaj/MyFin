@@ -37,6 +37,17 @@ export async function callGemini(prompt, history = []) {
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
+      // Logging temporal para depuración: no imprime la API key
+      try {
+        console.error('[GenAI] request failed', {
+          model: modelName,
+          url,
+          status: res.status,
+          body: json?.error || json || null,
+        });
+      } catch (logErr) {
+        console.error('[GenAI] logging failed', logErr);
+      }
       const err = new Error(`GenAI HTTP ${res.status}`);
       err.details = json;
       throw err;
