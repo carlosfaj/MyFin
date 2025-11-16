@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LoginScreen } from "./components/LoginScreen";
 import { DashboardScreen } from "./components/DashboardScreen";
 import { AnalysisScreen } from "./components/AnalysisScreen";
@@ -31,6 +31,24 @@ function App() {
   const handleLogin = () => {
     setIsLoggedIn(true);
   };
+
+  const formatDate = (d: Date) =>
+    d.toLocaleString(undefined, {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+  const [lastUpdate, setLastUpdate] = useState<string>(() => formatDate(new Date()));
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    setLastUpdate(formatDate(new Date()));
+    const id = setInterval(() => setLastUpdate(formatDate(new Date())), 60_000);
+    return () => clearInterval(id);
+  }, [isLoggedIn]);
 
   const handleLogout = () => {
     setIsLoggedIn(false);
@@ -180,7 +198,7 @@ function App() {
             <div className="flex items-center gap-2">
               <div className="hidden md:block text-right mr-3">
                 <p className="text-xs text-muted-foreground">Última actualización</p>
-                <p className="text-sm font-medium">21 Oct 2025, 14:30</p>
+                <p className="text-sm font-medium">{lastUpdate}</p>
               </div>
             </div>
           </div>
