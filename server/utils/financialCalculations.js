@@ -1,18 +1,119 @@
 import { flattenSchema } from './schemaMapper.js';
 
-// Función auxiliar para buscar valores difusos
-function findValue(data, keywords) {
+// --- DICCIONARIO DE EQUIVALENCIAS ---
+const ACCOUNT_DICTIONARY = {
+    efectivo: ['efectivo', 'caja', 'cash', 'disponible', 'bancos', 'tesoreria', 'efectivo y equivalentes'],
+    inversiones: ['inversiones', 'inversionestemporales', 'valores negociables', 'inversiones a corto plazo'],
+    inventario: ['inventario', 'inventory', 'existencias', 'almacen', 'mercancia', 'mercaderia', 'inventarios'],
+    cxc: ['cuentas por cobrar', 'clientes', 'receivables', 'documentos por cobrar', 'deudores comerciales', 'deudores diversos'],
+    activoCorriente: ['activo corriente', 'activos corrientes', 'activo circulante', 'activos circulantes', 'current assets', 'total activo circulante', 'total activo corriente'],
+    activoFijo: ['activo fijo', 'fixed assets', 'propiedad planta', 'activo no corriente', 'activos no corrientes', 'inmovilizado material', 'total activo fijo'],
+    activoTotal: ['total activo', 'total assets', 'activo total', 'suma del activo', 'activos totales'],
+    pasivoCorriente: ['pasivo corriente', 'pasivos corrientes', 'pasivo circulante', 'pasivos circulantes', 'pasivo a corto plazo', 'current liabilities', 'deudas a corto plazo', 'total pasivos circulantes', 'total pasivo circulante', 'total pasivos corto plazo'],
+    pasivoFijo: ['pasivo fijo', 'pasivos fijos', 'pasivo a largo plazo', 'long term liabilities', 'deuda a largo plazo', 'total pasivos fijos', 'total pasivo fijo'],
+    pasivoTotal: ['total pasivo', 'total liabilities', 'pasivo total', 'suma del pasivo', 'pasivos totales', 'total pasivos'],
+    patrimonio: ['patrimonio', 'capital', 'equity', 'capital contable', 'total capital', 'patrimonio neto', 'total patrimonio'],
+    ventas: ['ventas', 'ingresos', 'sales', 'revenue', 'ventas netas', 'ingresos totales', 'ingresos por ventas', 'ventas totales'],
+    ventasCredito: ['ventas a credito', 'ventas credito', 'credit sales'],
+    costoVentas: ['costo de ventas', 'cost of sales', 'costos', 'costo de lo vendido', 'costo de bienes vendidos'],
+    utilidadBruta: ['utilidad bruta', 'gross profit', 'ganancia bruta', 'margen bruto'],
+    gastosVenta: ['gastos de venta', 'gastos de comercializacion'],
+    gastosAdmin: ['gastos de administracion', 'gastos administrativos', 'gastos generales'],
+    gastosOp: ['gastos operativos', 'gastos de operacion', 'operating expenses'],
+    utilidadOp: ['utilidad operativa', 'operating income', 'utilidad de operacion', 'resultado operativo', 'ebit'],
+    intereses: ['gastos financieros', 'intereses', 'intereses pagados', 'interest expense'],
+    utilidadNeta: ['utilidad neta', 'net income', 'resultado del ejercicio', 'utilidad del ejercicio', 'ganancia neta'],
+    depreciacion: ['depreciacion', 'amortizacion', 'depreciation']
+};
+
+// Función auxiliar para normalizar strings
+function normalize(str) {
+    return String(str).toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, "");
+}
+
+// Algoritmo de Distancia de Levenshtein
+function levenshteinDistance(a, b) {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+
+    const matrix = [];
+
+    for (let i = 0; i <= b.length; i++) {
+        matrix[i] = [i];
+    }
+
+    for (let j = 0; j <= a.length; j++) {
+        matrix[0][j] = j;
+    }
+
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1, // substitution
+                    Math.min(
+                        matrix[i][j - 1] + 1, // insertion
+                        matrix[i - 1][j] + 1 // deletion
+                    )
+                );
+            }
+        }
+    }
+
+    return matrix[b.length][a.length];
+}
+
+// Función mejorada para buscar valores (Diccionario + Fuzzy)
+function findValue(data, keyType) {
     if (!data) return 0;
 
-    // data ya debe ser un objeto plano { "Ventas": 1000, ... }
-    const entries = Object.entries(data).map(([k, v]) => ({ concepto: k, valor: v }));
+    // Obtener lista de sinónimos del diccionario
+    const keywords = ACCOUNT_DICTIONARY[keyType] || [keyType];
 
-    const match = entries.find(e => {
-        const concept = String(e.concepto).toLowerCase();
-        return keywords.some(k => concept.includes(k.toLowerCase()));
-    });
+    const entries = Object.entries(data).map(([k, v]) => ({
+        concepto: k,
+        norm: normalize(k),
+        valor: v
+    }));
 
-    return match ? Number(match.valor) || 0 : 0;
+    // 1. Búsqueda Exacta / Normalizada (Prioridad Alta)
+    for (const keyword of keywords) {
+        const keyNorm = normalize(keyword);
+        const match = entries.find(e => e.norm.includes(keyNorm)); // Includes permite coincidencias parciales seguras
+        if (match) return Number(match.valor) || 0;
+    }
+
+    // 2. Búsqueda Difusa (Levenshtein) (Prioridad Baja - Solo si no hay match exacto)
+    // Solo buscamos si la palabra tiene cierta longitud para evitar falsos positivos cortos
+    let bestMatch = null;
+    let minDistance = Infinity;
+
+    for (const keyword of keywords) {
+        const keyNorm = normalize(keyword);
+        if (keyNorm.length < 4) continue; // Ignorar palabras muy cortas para fuzzy
+
+        for (const entry of entries) {
+            const dist = levenshteinDistance(keyNorm, entry.norm);
+            // Umbral: Permitimos 1 error por cada 4 caracteres aprox
+            const threshold = Math.floor(keyNorm.length / 4) + 1;
+
+            if (dist <= threshold && dist < minDistance) {
+                minDistance = dist;
+                bestMatch = entry;
+            }
+        }
+    }
+
+    if (bestMatch) {
+        // console.log(`Fuzzy Match: ${keyType} -> ${bestMatch.concepto} (Dist: ${minDistance})`);
+        return Number(bestMatch.valor) || 0;
+    }
+
+    return 0;
 }
 
 export function calculateRatios(currentData, previousData) {
@@ -23,64 +124,79 @@ export function calculateRatios(currentData, previousData) {
     const erPrev = previousData ? flattenSchema(previousData.income_statement || {}) : {};
     const bgPrev = previousData ? flattenSchema(previousData.balance_sheet || {}) : {};
 
-    // Extraer valores clave (Helpers)
-    const getVal = (source, keys) => findValue(source, keys);
+    // Helper simplificado que usa el diccionario interno
+    const getVal = (source, keyType) => findValue(source, keyType);
 
     // --- Balance General (Actual) ---
-    const efectivo = getVal(bg, ['efectivo', 'caja', 'cash']);
-    const inversiones = getVal(bg, ['inversiones', 'inversionestemporales']);
-    const inventario = getVal(bg, ['inventario', 'inventory', 'existencias', 'almacen']);
-    const cxc = getVal(bg, ['cuentas por cobrar', 'clientes', 'receivables', 'documentosporcobrar']);
+    const efectivo = getVal(bg, 'efectivo');
+    const inversiones = getVal(bg, 'inversiones');
+    const inventario = getVal(bg, 'inventario');
+    const cxc = getVal(bg, 'cxc');
 
-    // Activo Corriente (Circulante)
-    let activoCorriente = getVal(bg, ['activo corriente', 'activos corrientes', 'activocirculante']);
-    if (!activoCorriente) {
-        activoCorriente = efectivo + inversiones + inventario + cxc + getVal(bg, ['ivaacreditable']) + getVal(bg, ['anticipoaproveedores']);
-    }
+    // Activo Corriente (Circulante) - STRICT MODE (Sin recálculo)
+    const activoCorriente = getVal(bg, 'activoCorriente');
 
     // Activo Fijo
-    let activoFijo = getVal(bg, ['activo fijo', 'fixed assets', 'propiedad planta', 'activofijo']);
-    if (!activoFijo) {
-        activoFijo = getVal(bg, ['terrenos']) + getVal(bg, ['edificios']) + getVal(bg, ['maquinaria']) + getVal(bg, ['mobiliario']) + getVal(bg, ['vehiculos']);
-    }
+    const activoFijo = getVal(bg, 'activoFijo');
 
     // Activo Total
-    let activoTotal = getVal(bg, ['total activo', 'total assets', 'activo total']);
-    if (!activoTotal) activoTotal = activoCorriente + activoFijo + getVal(bg, ['activodiferido']) + getVal(bg, ['otrosactivos']);
+    const activoTotal = getVal(bg, 'activoTotal');
 
     // Pasivo Corriente (Corto Plazo)
-    let pasivoCorriente = getVal(bg, ['pasivo corriente', 'pasivos corrientes', 'pasivoscortoplazo']);
-    if (!pasivoCorriente) {
-        pasivoCorriente = getVal(bg, ['proveedores']) + getVal(bg, ['documentosporpagar']) + getVal(bg, ['acreedoresdiversos']) + getVal(bg, ['impuestosobrelarentaporpagar']) + getVal(bg, ['dividendosporpagar']);
-    }
+    const pasivoCorriente = getVal(bg, 'pasivoCorriente');
 
     // Pasivo Total
-    let pasivoTotal = getVal(bg, ['total pasivo', 'total liabilities', 'pasivo total']);
-    if (!pasivoTotal) pasivoTotal = pasivoCorriente + getVal(bg, ['pasivofijo']) + getVal(bg, ['pasivodiferido']);
+    const pasivoTotal = getVal(bg, 'pasivoTotal');
 
     // Patrimonio
-    let patrimonio = getVal(bg, ['patrimonio', 'capital', 'equity', 'capitalcontribuido']) + getVal(bg, ['capitalganado']);
-    if (!patrimonio) patrimonio = activoTotal - pasivoTotal;
+    const patrimonio = getVal(bg, 'patrimonio');
 
     // --- Estado de Resultados (Actual) ---
-    const ventas = getVal(er, ['ventas', 'ingresos', 'sales', 'revenue']);
-    const ventasCredito = getVal(er, ['ventasalcredito']) || ventas; // Si no hay dato, asumimos total
-    const costoVentas = getVal(er, ['costo de ventas', 'cost of sales', 'costos', 'costodeventa']);
-    const utilidadBruta = getVal(er, ['utilidad bruta', 'gross profit', 'utilidadbruta']) || (ventas - Math.abs(costoVentas));
+    const ventas = getVal(er, 'ventas');
+    const ventasCredito = getVal(er, 'ventasCredito') || ventas;
+    const costoVentas = getVal(er, 'costoVentas');
+    const utilidadBruta = getVal(er, 'utilidadBruta') || (ventas - Math.abs(costoVentas));
 
-    const gastosVenta = getVal(er, ['gastosdeventa']);
-    const gastosAdmin = getVal(er, ['gastosdeadministracion']);
-    const gastosOp = getVal(er, ['gastos operativos', 'gastos de operación', 'gastosoperativos']) || (gastosVenta + gastosAdmin);
+    const gastosVenta = getVal(er, 'gastosVenta');
+    const gastosAdmin = getVal(er, 'gastosAdmin');
+    const gastosOp = getVal(er, 'gastosOp') || (gastosVenta + gastosAdmin);
 
-    const utilidadOp = getVal(er, ['utilidad operativa', 'operating income', 'utilidadoperativa']) || (utilidadBruta - Math.abs(gastosOp));
-    const intereses = getVal(er, ['gastos financieros', 'intereses', 'gastosfinancieros', 'interesespagados']);
-    const utilidadNeta = getVal(er, ['utilidad neta', 'net income', 'resultado del ejercicio', 'utilidadneta']);
+    const utilidadOp = getVal(er, 'utilidadOp') || (utilidadBruta - Math.abs(gastosOp));
+    const intereses = getVal(er, 'intereses');
+
+    // Lógica especial para Utilidad Neta (Excluir "Antes de Impuestos")
+    const findNetIncome = (data) => {
+        if (!data) return 0;
+        const entries = Object.entries(data).map(([k, v]) => ({ concepto: k, norm: normalize(k), valor: v }));
+
+        // 1. Buscar explícitamente "Utilidad Neta" o "Resultado del Ejercicio" SIN "Antes"
+        const keywords = ACCOUNT_DICTIONARY['utilidadNeta'];
+
+        const match = entries.find(e => {
+            const isNet = keywords.some(k => e.norm.includes(normalize(k)));
+            const isBefore = (e.norm.includes('antes') || e.norm.includes('before'));
+            return isNet && !isBefore;
+        });
+
+        if (match) return Number(match.valor);
+
+        // 2. Si no, buscar "Utilidad Despues de Impuestos"
+        const matchAfter = entries.find(e => {
+            return e.norm.includes('despues') || e.norm.includes('after');
+        });
+
+        if (matchAfter) return Number(matchAfter.valor);
+
+        return 0;
+    };
+
+    const utilidadNeta = findNetIncome(er);
 
     // --- Valores Previos (para promedios y horizontal) ---
-    const inventarioPrev = getVal(bgPrev, ['inventario', 'inventory', 'existencias', 'almacen']);
-    const cxcPrev = getVal(bgPrev, ['cuentas por cobrar', 'clientes', 'receivables']);
-    const activoFijoPrev = getVal(bgPrev, ['activo fijo', 'fixed assets']);
-    const activoTotalPrev = getVal(bgPrev, ['total activo', 'total assets']);
+    const inventarioPrev = getVal(bgPrev, 'inventario');
+    const cxcPrev = getVal(bgPrev, 'cxc');
+    const activoFijoPrev = getVal(bgPrev, 'activoFijo');
+    const activoTotalPrev = getVal(bgPrev, 'activoTotal');
 
     // Promedios
     const inventarioPromedio = inventarioPrev ? (inventario + inventarioPrev) / 2 : inventario;
@@ -90,34 +206,51 @@ export function calculateRatios(currentData, previousData) {
 
     // --- CÁLCULOS SOLICITADOS ---
 
-    // 1. Análisis Vertical (Solo devolvemos estructura para UI, aquí calculamos ratios clave)
-    // Se hace en frontend o se devuelve raw
+    // 1. Análisis Horizontal (Variaciones)
+    const horizontalAnalysis = {};
+    if (previousData) {
+        const calculateVariation = (current, previous) => {
+            const diff = current - previous;
+            const rel = previous !== 0 ? (diff / Math.abs(previous)) * 100 : 0;
+            return { abs: diff, rel: rel };
+        };
 
-    // 2. Análisis Horizontal (Variaciones)
-    // Se hace en frontend comparando raw actual vs prev
+        const traverseAndCompare = (currObj, prevObj, targetObj) => {
+            for (const key in currObj) {
+                if (typeof currObj[key] === 'object' && currObj[key] !== null) {
+                    targetObj[key] = {};
+                    traverseAndCompare(currObj[key], prevObj?.[key] || {}, targetObj[key]);
+                } else if (typeof currObj[key] === 'number') {
+                    const prevVal = typeof prevObj?.[key] === 'number' ? prevObj[key] : 0;
+                    targetObj[key] = {
+                        value: currObj[key],
+                        ...calculateVariation(currObj[key], prevVal)
+                    };
+                }
+            }
+        };
 
-    // 3. Capital Neto Operativo
-    // Formula usuario: AC% - PC% (AC != Caja, efectivo, inversiones; PC != Impuesto, dividendos)
-    // Interpretación: AC Operativo - PC Operativo
-    const acOperativo = activoCorriente - efectivo - inversiones;
-    const impuestosPorPagar = getVal(bg, ['impuestosobrelarentaporpagar', 'impuestos']);
-    const dividendosPorPagar = getVal(bg, ['dividendosporpagar', 'dividendos']);
-    const pcOperativo = pasivoCorriente - impuestosPorPagar - dividendosPorPagar;
-    const capitalNetoOperativo = acOperativo - pcOperativo;
+        horizontalAnalysis.balance_sheet = {};
+        traverseAndCompare(currentData.balance_sheet, previousData.balance_sheet, horizontalAnalysis.balance_sheet);
 
-    // 4. Estado de Origen y Aplicación
-    // Requiere comparar con previo
+        horizontalAnalysis.income_statement = {};
+        traverseAndCompare(currentData.income_statement, previousData.income_statement, horizontalAnalysis.income_statement);
+    }
+
+    // 2. Capital Neto Operativo (AC% - PC%)
+    const acPercent = activoTotal ? (activoCorriente / activoTotal) * 100 : 0;
+    const pcPercent = (pasivoTotal + patrimonio) ? (pasivoCorriente / (pasivoTotal + patrimonio)) * 100 : 0;
+    const capitalNetoOperativo = acPercent - pcPercent;
+
+    // 3. Estado de Origen y Aplicación
     const origenAplicacion = [];
     if (previousData) {
-        // Helper para determinar O/A
         const calcOA = (key, currentVal, prevVal, type) => {
             const diff = currentVal - prevVal;
             if (diff === 0) return null;
 
             let isOrigen = false;
-            // Activo: Aumenta -> Aplicación, Disminuye -> Origen
             if (type === 'activo') isOrigen = diff < 0;
-            // Pasivo/Capital: Aumenta -> Origen, Disminuye -> Aplicación
             if (type === 'pasivo' || type === 'capital') isOrigen = diff > 0;
 
             return {
@@ -127,27 +260,12 @@ export function calculateRatios(currentData, previousData) {
             };
         };
 
-        // Recorrer cuentas principales (simplificado)
-        // Activos
-        Object.keys(bg).forEach(k => {
-            // Ignorar totales calculados si están en el raw, o filtrar
-            if (bgPrev[k] !== undefined) {
-                // Determinar si es activo, pasivo o capital es difícil solo con el nombre plano
-                // Usaremos la estructura conocida del usuario si es posible, o heurística
-                // Por ahora, asumimos que si está en bg y no es pasivo/capital...
-                // Mejor: Usar los grupos del esquema si pudiéramos. 
-                // Como flattenSchema pierde estructura, esto es limitado.
-                // Para MVP: Solo calculamos O/A de los grandes grupos calculados arriba
-            }
-        });
-
-        // Manual O/A de grupos grandes
         const items = [
-            { k: 'Activo Corriente', cur: activoCorriente, prev: getVal(bgPrev, ['activo corriente']) || 0, t: 'activo' },
+            { k: 'Activo Corriente', cur: activoCorriente, prev: getVal(bgPrev, 'activoCorriente') || 0, t: 'activo' },
             { k: 'Activo Fijo', cur: activoFijo, prev: activoFijoPrev || 0, t: 'activo' },
-            { k: 'Pasivo Corriente', cur: pasivoCorriente, prev: getVal(bgPrev, ['pasivo corriente']) || 0, t: 'pasivo' },
-            { k: 'Pasivo Largo Plazo', cur: pasivoTotal - pasivoCorriente, prev: (getVal(bgPrev, ['total pasivo']) || 0) - (getVal(bgPrev, ['pasivo corriente']) || 0), t: 'pasivo' },
-            { k: 'Capital', cur: patrimonio, prev: getVal(bgPrev, ['patrimonio']) || 0, t: 'capital' }
+            { k: 'Pasivo Corriente', cur: pasivoCorriente, prev: getVal(bgPrev, 'pasivoCorriente') || 0, t: 'pasivo' },
+            { k: 'Pasivo Largo Plazo', cur: pasivoTotal - pasivoCorriente, prev: (getVal(bgPrev, 'pasivoTotal') || 0) - (getVal(bgPrev, 'pasivoCorriente') || 0), t: 'pasivo' },
+            { k: 'Capital', cur: patrimonio, prev: getVal(bgPrev, 'patrimonio') || 0, t: 'capital' }
         ];
 
         items.forEach(i => {
@@ -155,9 +273,8 @@ export function calculateRatios(currentData, previousData) {
             if (res) origenAplicacion.push(res);
         });
 
-        // Utilidad Neta y Depreciación siempre Origen
         if (utilidadNeta > 0) origenAplicacion.push({ cuenta: 'Utilidad Neta', variacion: utilidadNeta, tipo: 'Origen' });
-        const depreciacion = getVal(er, ['depreciacion', 'depreciaciondeequiposdeventa', 'depreciaciondeedificiosymobiliarios']); // Sumar todas
+        const depreciacion = getVal(er, 'depreciacion');
         if (depreciacion > 0) origenAplicacion.push({ cuenta: 'Depreciación', variacion: depreciacion, tipo: 'Origen' });
     }
 
@@ -185,7 +302,6 @@ export function calculateRatios(currentData, previousData) {
     const muo = ventas ? (utilidadOp / ventas) * 100 : 0;
     const mun = ventas ? (utilidadNeta / ventas) * 100 : 0;
     const roa = activoTotal ? (utilidadNeta / activoTotal) * 100 : 0;
-    // ROE no pedido explícitamente en la lista nueva pero útil
     const roe = patrimonio ? (utilidadNeta / patrimonio) * 100 : 0;
 
     return {
@@ -215,8 +331,11 @@ export function calculateRatios(currentData, previousData) {
         },
         otros: {
             capitalNetoOperativo,
+            acPercent,
+            pcPercent,
             origenAplicacion
         },
+        horizontalAnalysis,
         raw: {
             ventas, utilidadNeta, activoTotal, pasivoTotal, patrimonio, activoCorriente, pasivoCorriente
         }

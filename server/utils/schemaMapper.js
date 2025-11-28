@@ -21,16 +21,16 @@ const BALANCE_TEMPLATE = {
         OtrosActivos: {
             InversionesEnProceso: 0, FondoDeAmortizacionDeObligaciones: 0
         },
-        PasivosCortoPlazo: {
+        PasivosCirculantes: {
             Proveedores: 0, DocumentosPorPagar: 0, AcreedoresDiversos: 0, AnticipoDeClientes: 0,
             DividendosPorPagar: 0, IVAPorPagar: 0, ImpuestoSobreLaRentaPorPagar: 0,
             InteresesPorPagar: 0, SueldosPorPagar: 0, IngresosCobradosPorAnticipado: 0
         },
-        PasivoFijo: {
+        PasivosFijos: {
             AcreedoresHipotecarios: 0, AcreedoresBancarios: 0, DocumentosPorPagarALargoPlazo: 0,
             BonosPorPagar: 0
         },
-        PasivoDiferido: {
+        PasivosDiferidos: {
             RentasCobradasPorAnticipado: 0, InteresesCobradosPorAnticipado: 0
         },
         CapitalContribuido: {

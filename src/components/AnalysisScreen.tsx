@@ -2,9 +2,11 @@ import { useState, useEffect, Fragment, JSX } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
-import { AlertCircle, FileText, Info } from "lucide-react";
+import { AlertCircle, FileText, Info, ArrowRightLeft } from "lucide-react";
 import { Button } from "./ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Switch } from "./ui/switch";
+import { Label } from "./ui/label";
 
 interface AnalysisScreenProps {
   onNavigate: (screen: any) => void;
@@ -38,6 +40,7 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'vertical' | 'horizontal'>('vertical');
 
   const fetchAnalysis = () => {
     setLoading(true);
@@ -87,6 +90,10 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
   }
 
   const { analysis, currentPeriod, raw } = analysisData;
+  const horizontalAnalysis = analysisData.analysis?.horizontalAnalysis;
+  const capitalNetoOperativo = analysisData.analysis?.otros?.capitalNetoOperativo;
+  const acPercent = analysisData.analysis?.otros?.acPercent;
+  const pcPercent = analysisData.analysis?.otros?.pcPercent;
 
   if (!analysis) {
     return (
@@ -102,6 +109,10 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
       </div>
     );
   }
+
+  // Identificar periodos disponibles
+  const rawPeriods = Object.keys(raw).sort().reverse();
+  const previousPeriod = rawPeriods[1];
 
   // Helper para formatear moneda
   const formatCurrency = (value: number) => {
@@ -126,10 +137,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
     if (value === undefined || value === null) return 'N/A';
     return value.toFixed(2);
   };
-
-  // --- LÓGICA DE ANÁLISIS VERTICAL ---
-
-  const rawPeriods = raw ? Object.keys(raw).sort().reverse() : [];
 
   // Helper para sumar recursivamente valores numéricos en una estructura
   const calculateRecursiveTotal = (data: any): number => {
@@ -159,8 +166,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
                       findValueByKey(periodData?.balance_sheet, 'Total Assets');
                       
     if (!totalAssets) {
-        // Fallback: Sumar recursivamente si no hay total explícito
-        // Intentamos sumar las ramas principales si existen para ser más precisos
         const ac = calculateRecursiveTotal(periodData?.balance_sheet?.['ActivoCorriente'] || periodData?.balance_sheet?.['Activo Corriente']);
         const anc = calculateRecursiveTotal(periodData?.balance_sheet?.['ActivoNoCorriente'] || periodData?.balance_sheet?.['Activo No Corriente'] || periodData?.balance_sheet?.['ActivoFijo'] || periodData?.balance_sheet?.['Activo Fijo']);
         
@@ -168,7 +173,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
         if (calculatedSum > 0) {
             totalAssets = calculatedSum;
         } else {
-            // Último recurso: sumar todo el balance sheet (asumiendo que solo tiene activos o que la suma total es lo que buscamos)
             totalAssets = calculateRecursiveTotal(periodData?.balance_sheet);
         }
     }
@@ -228,32 +232,93 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
     };
   });
 
+  const HorizontalAnalysisTable = ({ type }: { type: 'balance' | 'income' }) => {
+      const data = horizontalAnalysis?.[type === 'balance' ? 'balance_sheet' : 'income_statement'];
+      
+      if (!data || !previousPeriod) return <div className="p-4 text-center text-muted-foreground">Se requieren al menos 2 periodos para el análisis horizontal.</div>;
+
+      const renderRows = (structure: any, depth = 0) => {
+          return Object.keys(structure).map(key => {
+              const item = structure[key];
+              const isLeaf = item && typeof item.abs === 'number';
+              
+              if (!isLeaf) {
+                  return (
+                      <Fragment key={key}>
+                          <TableRow className="hover:bg-muted/50 bg-muted/20">
+                              <TableCell style={{ paddingLeft: `${(depth * 1.5) + 1}rem` }} className="font-bold text-primary" colSpan={5}>
+                                  {key}
+                              </TableCell>
+                          </TableRow>
+                          {renderRows(item, depth + 1)}
+                      </Fragment>
+                  );
+              }
+
+              return (
+                  <TableRow key={key} className="hover:bg-muted/50">
+                      <TableCell style={{ paddingLeft: `${(depth * 1.5) + 1}rem` }} className="font-medium">
+                          {key}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                          {formatCurrency(item.value)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                          {formatCurrency(item.value - item.abs)}
+                      </TableCell>
+                      <TableCell className={`text-right font-mono text-sm ${item.abs >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatCurrency(item.abs)}
+                      </TableCell>
+                      <TableCell className={`text-right font-mono text-sm border-r ${item.rel >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatSimplePercent(item.rel)}
+                      </TableCell>
+                  </TableRow>
+              );
+          });
+      };
+
+      return (
+          <div className="rounded-md border overflow-x-auto">
+              <Table>
+                  <TableHeader>
+                      <TableRow>
+                          <TableHead className="w-[300px]">Cuenta</TableHead>
+                          <TableHead className="text-right">{currentPeriod}</TableHead>
+                          <TableHead className="text-right text-muted-foreground">{previousPeriod}</TableHead>
+                          <TableHead className="text-right">Var. Absoluta</TableHead>
+                          <TableHead className="text-right border-r">Var. Relativa</TableHead>
+                      </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                      {renderRows(data)}
+                  </TableBody>
+              </Table>
+          </div>
+      );
+  };
+
   const VerticalAnalysisTable = ({ type }: { type: 'balance' | 'income' }) => {
     let baseStructure = raw[currentPeriod]?.[type === 'balance' ? 'balance_sheet' : 'income_statement'];
     
     if (!baseStructure) return <div>No hay datos disponibles.</div>;
 
-    // 1. Desempaquetar raíz si es un contenedor único (ej. "BalanceGeneral")
     const keys = Object.keys(baseStructure);
     if (keys.length === 1 && typeof baseStructure[keys[0]] === 'object') {
         baseStructure = baseStructure[keys[0]];
     }
 
-    // Helper para ignorar llaves de totales en cálculos
     const isTotalKey = (key: string) => {
         const k = key.toLowerCase();
         return k.startsWith('total') || k.startsWith('suma') || k.startsWith('gran total');
     };
 
-    // Helper mejorado para sumar recursivamente excluyendo totales explícitos
     const calculateSafeTotal = (data: any): number => {
         if (typeof data === 'number') return data;
         if (!data || typeof data !== 'object') return 0;
         
         let sum = 0;
         for (const key in data) {
-            if (isTotalKey(key)) continue; // Ignorar totales pre-calculados por la IA
-
+            if (isTotalKey(key)) continue;
             if (typeof data[key] === 'object') {
                 sum += calculateSafeTotal(data[key]);
             } else if (typeof data[key] === 'number') {
@@ -263,7 +328,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
         return sum;
     };
 
-    // Helper para clasificar cuentas
     const classifyAccount = (key: string): 'asset' | 'liability' | 'equity' | 'unknown' => {
         const k = key.toLowerCase().replace(/[^a-z]/g, '');
         if (k.includes('activo') || k.includes('asset') || k.includes('caja') || k.includes('efectivo') || k.includes('banco') || k.includes('inversion') || k.includes('inventario') || k.includes('cliente') || k.includes('cobrar') || k.includes('propiedad') || k.includes('equipo') || k.includes('maquinaria')) return 'asset';
@@ -272,7 +336,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
         return 'unknown';
     };
 
-    // Helper para ordenar llaves según lógica contable
     const sortFinancialKeys = (keys: string[], groupType: 'asset' | 'liability' | 'equity' | 'unknown') => {
         return keys.sort((a, b) => {
             const normA = a.toLowerCase();
@@ -306,9 +369,7 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
         });
     };
 
-    // Función de renderizado recursivo
     const renderRows = (structure: any, depth = 0, path: string[] = [], customBaseMap?: Record<string, number>) => {
-      // Filtrar llaves de totales para no renderizarlas como items normales
       const keysToRender = Object.keys(structure).filter(k => !isTotalKey(k));
 
       return keysToRender.map((key) => {
@@ -317,11 +378,9 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
         const isGroup = typeof val === 'object' && val !== null && !Array.isArray(val);
         
         if (isGroup) {
-          // Calcular totales para este grupo
-          const groupTotals = rawPeriods.reduce((acc, period) => {
+          const groupTotals = type === 'balance' ? rawPeriods.reduce((acc, period) => {
             let groupData: any = raw[period]?.[type === 'balance' ? 'balance_sheet' : 'income_statement'];
             
-            // Re-navegación segura:
             let validPath = true;
             if (raw[period]) {
                 let currentRoot = raw[period][type === 'balance' ? 'balance_sheet' : 'income_statement'];
@@ -346,7 +405,7 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
 
             acc[period] = validPath ? calculateSafeTotal(groupData) : 0;
             return acc;
-          }, {} as Record<string, number>);
+          }, {} as Record<string, number>) : {};
 
           return (
             <Fragment key={key}>
@@ -358,33 +417,33 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
               
               {renderRows(val, depth + 1, currentPath, customBaseMap)}
               
-              <TableRow className="bg-muted/30 font-semibold border-t">
-                <TableCell style={{ paddingLeft: `${(depth * 1.5) + 1}rem` }}>
-                  Total {key}
-                </TableCell>
-                {rawPeriods.map(period => {
-                  const value = groupTotals[period] || 0;
-                  // Usar base personalizada si existe, sino usar la lógica por defecto
-                  const base = customBaseMap ? customBaseMap[period] : (type === 'balance' ? periodTotals[period].totalAssets : periodTotals[period].netSales);
-                  const percentage = base ? (value / base) * 100 : 0;
-                  
-                  return (
-                    <Fragment key={period}>
-                      <TableCell className="text-right font-mono text-sm">
-                        {formatCurrency(value)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm text-muted-foreground border-r">
-                        {formatSimplePercent(percentage)}
-                      </TableCell>
-                    </Fragment>
-                  );
-                })}
-              </TableRow>
+              {type === 'balance' && (
+                <TableRow className="bg-muted/30 font-semibold border-t">
+                  <TableCell style={{ paddingLeft: `${(depth * 1.5) + 1}rem` }}>
+                    Total {key}
+                  </TableCell>
+                  {rawPeriods.map(period => {
+                    const value = groupTotals[period] || 0;
+                    const base = customBaseMap ? customBaseMap[period] : periodTotals[period].totalAssets;
+                    const percentage = base ? (value / base) * 100 : 0;
+                    
+                    return (
+                      <Fragment key={period}>
+                        <TableCell className="text-right font-mono text-sm">
+                          {formatCurrency(value)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-muted-foreground border-r">
+                          {formatSimplePercent(percentage)}
+                        </TableCell>
+                      </Fragment>
+                    );
+                  })}
+                </TableRow>
+              )}
             </Fragment>
           );
         }
 
-        // Renderizar item hoja
         return (
           <TableRow key={key} className="hover:bg-muted/50">
             <TableCell style={{ paddingLeft: `${(depth * 1.5) + 1}rem` }} className="font-medium">
@@ -413,7 +472,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
               }
 
               const numValue = (typeof value === 'number') ? value : 0;
-              // Usar base personalizada si existe, sino usar la lógica por defecto
               const base = customBaseMap ? customBaseMap[period] : (type === 'balance' ? periodTotals[period].totalAssets : periodTotals[period].netSales);
               const percentage = base ? (numValue / base) * 100 : 0;
 
@@ -440,7 +498,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
         const equity = sortFinancialKeys(allKeys.filter(k => classifyAccount(k) === 'equity'), 'equity');
         const others = sortFinancialKeys(allKeys.filter(k => classifyAccount(k) === 'unknown'), 'unknown');
 
-        // Calcular totales dinámicos
         const calculatedTotals = rawPeriods.reduce((acc, period) => {
             let periodData = raw[period]?.balance_sheet || {};
             const rootKeys = Object.keys(periodData);
@@ -460,7 +517,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
             return acc;
         }, {} as Record<string, { assets: number; liabilities: number; equity: number }>);
 
-        // Mapas de bases para cada sección
         const assetBaseMap = rawPeriods.reduce((acc, p) => ({ ...acc, [p]: calculatedTotals[p].assets }), {});
         const liabilityEquityBaseMap = rawPeriods.reduce((acc, p) => ({ ...acc, [p]: calculatedTotals[p].liabilities + calculatedTotals[p].equity }), {});
 
@@ -485,7 +541,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {/* ACTIVOS */}
                   {assets.map(key => renderRows({ [key]: baseStructure[key] }, 0, [], assetBaseMap))}
                   {others.map(key => renderRows({ [key]: baseStructure[key] }, 0, [], assetBaseMap))}
                   
@@ -499,65 +554,50 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
                     ))}
                   </TableRow>
 
-                  <TableRow><TableCell colSpan={1 + (rawPeriods.length * 2)} className="h-4"></TableCell></TableRow>
-
-                  {/* PASIVOS */}
                   {liabilities.map(key => renderRows({ [key]: baseStructure[key] }, 0, [], liabilityEquityBaseMap))}
                   
                   <TableRow className="bg-muted/40 font-bold border-t-2 border-primary/20">
                     <TableCell>TOTAL PASIVOS</TableCell>
-                    {rawPeriods.map(period => {
-                        const val = calculatedTotals[period].liabilities;
-                        const base = calculatedTotals[period].liabilities + calculatedTotals[period].equity;
-                        return (
-                            <Fragment key={period}>
-                                <TableCell className="text-right font-mono text-sm">{formatCurrency(val)}</TableCell>
-                                <TableCell className="text-right font-mono text-sm text-muted-foreground border-r">{formatSimplePercent(base ? (val/base)*100 : 0)}</TableCell>
-                            </Fragment>
-                        );
-                    })}
+                    {rawPeriods.map(period => (
+                        <Fragment key={period}>
+                            <TableCell className="text-right font-mono text-sm">{formatCurrency(calculatedTotals[period].liabilities)}</TableCell>
+                            <TableCell className="text-right font-mono text-sm text-muted-foreground border-r">
+                                {formatSimplePercent((calculatedTotals[period].liabilities / (calculatedTotals[period].liabilities + calculatedTotals[period].equity)) * 100)}
+                            </TableCell>
+                        </Fragment>
+                    ))}
                   </TableRow>
 
-                  <TableRow><TableCell colSpan={1 + (rawPeriods.length * 2)} className="h-4"></TableCell></TableRow>
-
-                  {/* CAPITAL */}
                   {equity.map(key => renderRows({ [key]: baseStructure[key] }, 0, [], liabilityEquityBaseMap))}
 
                   <TableRow className="bg-muted/40 font-bold border-t-2 border-primary/20">
                     <TableCell>TOTAL CAPITAL</TableCell>
-                    {rawPeriods.map(period => {
-                        const val = calculatedTotals[period].equity;
-                        const base = calculatedTotals[period].liabilities + calculatedTotals[period].equity;
-                        return (
-                            <Fragment key={period}>
-                                <TableCell className="text-right font-mono text-sm">{formatCurrency(val)}</TableCell>
-                                <TableCell className="text-right font-mono text-sm text-muted-foreground border-r">{formatSimplePercent(base ? (val/base)*100 : 0)}</TableCell>
-                            </Fragment>
-                        );
-                    })}
+                    {rawPeriods.map(period => (
+                        <Fragment key={period}>
+                            <TableCell className="text-right font-mono text-sm">{formatCurrency(calculatedTotals[period].equity)}</TableCell>
+                            <TableCell className="text-right font-mono text-sm text-muted-foreground border-r">
+                                {formatSimplePercent((calculatedTotals[period].equity / (calculatedTotals[period].liabilities + calculatedTotals[period].equity)) * 100)}
+                            </TableCell>
+                        </Fragment>
+                    ))}
                   </TableRow>
 
-                  {/* TOTAL PASIVO + CAPITAL */}
-                  <TableRow className="bg-primary/10 font-bold border-t-4 border-double border-primary mt-4">
+                  <TableRow className="bg-primary/10 font-bold border-t-4 border-double border-primary">
                     <TableCell>TOTAL PASIVO + CAPITAL</TableCell>
-                    {rawPeriods.map(period => {
-                        const val = calculatedTotals[period].liabilities + calculatedTotals[period].equity;
-                        const base = val; // Siempre es 100% respecto a sí mismo
-                        return (
-                            <Fragment key={period}>
-                                <TableCell className="text-right font-mono text-sm">{formatCurrency(val)}</TableCell>
-                                <TableCell className="text-right font-mono text-sm text-muted-foreground border-r">100.00%</TableCell>
-                            </Fragment>
-                        );
-                    })}
+                    {rawPeriods.map(period => (
+                        <Fragment key={period}>
+                            <TableCell className="text-right font-mono text-sm">{formatCurrency(calculatedTotals[period].liabilities + calculatedTotals[period].equity)}</TableCell>
+                            <TableCell className="text-right font-mono text-sm text-muted-foreground border-r">100.00%</TableCell>
+                        </Fragment>
+                    ))}
                   </TableRow>
+
                 </TableBody>
               </Table>
             </div>
         );
     }
 
-    // Default render for Income Statement
     return (
       <div className="rounded-md border overflow-x-auto">
         <Table>
@@ -586,10 +626,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
     );
   };
 
-
-
-
-  // Helper para renderizar razón financiera (sin cambios)
   const renderRatio = (title: string, formula: string, value: any, benchmark: string, analysis: string) => {
     const numValue = value?.valor || 0;
     return (
@@ -623,7 +659,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
     );
   };
 
-  // Renderizar jerarquía de datos fuente (Legacy - para Datos Fuente tab)
   const renderSourceData = (data: any, indent: number = 0): JSX.Element[] => {
     if (!data || typeof data !== 'object') {
       return [];
@@ -656,10 +691,22 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
           <h1 className="text-3xl font-bold">Análisis Financiero Detallado</h1>
           <p className="text-muted-foreground">Periodo Base: {currentPeriod}</p>
         </div>
-        <Button variant="outline" onClick={() => onNavigate('import')}>
-          <FileText className="mr-2 h-4 w-4" />
-          Nueva Importación
-        </Button>
+        <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 bg-muted p-2 rounded-lg">
+                <Switch 
+                    id="view-mode" 
+                    checked={viewMode === 'horizontal'}
+                    onCheckedChange={(checked: any) => setViewMode(checked ? 'horizontal' : 'vertical')}
+                />
+                <Label htmlFor="view-mode" className="cursor-pointer font-medium">
+                    {viewMode === 'horizontal' ? 'Análisis Horizontal' : 'Análisis Vertical'}
+                </Label>
+            </div>
+            <Button variant="outline" onClick={() => onNavigate('import')}>
+            <FileText className="mr-2 h-4 w-4" />
+            Nueva Importación
+            </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="balance-general" className="w-full">
@@ -670,55 +717,98 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
           <TabsTrigger value="source" className="flex-1 min-w-[100px]">Datos Fuente</TabsTrigger>
         </TabsList>
 
-        {/* BALANCE GENERAL */}
         <TabsContent value="balance-general" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Análisis Vertical - Balance General</CardTitle>
+              <CardTitle>{viewMode === 'horizontal' ? 'Análisis Horizontal' : 'Análisis Vertical'} - Balance General</CardTitle>
               <CardDescription>
-                Cada cuenta se presenta como porcentaje del Total de Activos.
+                {viewMode === 'horizontal' 
+                    ? 'Comparación de variaciones absolutas y relativas entre periodos.' 
+                    : 'Cada cuenta se presenta como porcentaje del Total de Activos.'}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Alert className="mb-6">
-                <Info className="h-4 w-4" />
-                <AlertTitle>Interpretación</AlertTitle>
-                <AlertDescription>
-                  El porcentaje indica la proporción que representa cada cuenta respecto al Total de Activos (100%).
-                </AlertDescription>
-              </Alert>
+              {viewMode === 'vertical' && (
+                  <Alert className="mb-6">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Interpretación</AlertTitle>
+                    <AlertDescription>
+                      El porcentaje indica la proporción que representa cada cuenta respecto al Total de Activos (100%).
+                    </AlertDescription>
+                  </Alert>
+              )}
               
-              <VerticalAnalysisTable type="balance" />
+              {viewMode === 'horizontal' ? (
+                  <HorizontalAnalysisTable type="balance" />
+              ) : (
+                  <VerticalAnalysisTable type="balance" />
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* ESTADO DE RESULTADO */}
         <TabsContent value="estado-resultado" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Análisis Vertical - Estado de Resultados</CardTitle>
+              <CardTitle>{viewMode === 'horizontal' ? 'Análisis Horizontal' : 'Análisis Vertical'} - Estado de Resultados</CardTitle>
               <CardDescription>
-                Cada cuenta se presenta como porcentaje de las Ventas Netas.
+                {viewMode === 'horizontal' 
+                    ? 'Comparación de variaciones absolutas y relativas entre periodos.' 
+                    : 'Cada cuenta se presenta como porcentaje de las Ventas Netas.'}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Alert className="mb-6">
-                <Info className="h-4 w-4" />
-                <AlertTitle>Interpretación</AlertTitle>
-                <AlertDescription>
-                  El porcentaje indica la proporción de cada ingreso o gasto respecto a las Ventas Totales (100%).
-                </AlertDescription>
-              </Alert>
+              {viewMode === 'vertical' && (
+                  <Alert className="mb-6">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Interpretación</AlertTitle>
+                    <AlertDescription>
+                      El porcentaje indica la proporción de cada ingreso o gasto respecto a las Ventas Totales (100%).
+                    </AlertDescription>
+                  </Alert>
+              )}
               
-              <VerticalAnalysisTable type="income" />
+              {viewMode === 'horizontal' ? (
+                  <HorizontalAnalysisTable type="income" />
+              ) : (
+                  <VerticalAnalysisTable type="income" />
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* RAZONES FINANCIERAS */}
         <TabsContent value="razones" className="space-y-6">
-          {/* 1. RAZONES DE LIQUIDEZ */}
+          <Card>
+            <CardHeader className="bg-primary/5">
+              <CardTitle className="text-2xl">Capital Neto Operativo</CardTitle>
+              <CardDescription>Cálculo basado en porcentajes de Activo y Pasivo Corriente</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div className="p-4 bg-muted rounded-lg text-center">
+                        <p className="text-sm text-muted-foreground mb-1">AC% (Activo Cte / Total Activo)</p>
+                        <p className="text-xl font-bold">{formatSimplePercent(acPercent)}</p>
+                    </div>
+                    <div className="p-4 bg-muted rounded-lg text-center">
+                        <p className="text-sm text-muted-foreground mb-1">PC% (Pasivo Cte / Total Pasivo+Capital)</p>
+                        <p className="text-xl font-bold">{formatSimplePercent(pcPercent)}</p>
+                    </div>
+                    <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg text-center">
+                        <p className="text-sm text-primary font-semibold mb-1">Capital Neto Operativo (AC% - PC%)</p>
+                        <p className="text-2xl font-bold text-primary">{formatSimplePercent(capitalNetoOperativo)}</p>
+                    </div>
+                </div>
+                <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Fórmula Utilizada</AlertTitle>
+                    <AlertDescription>
+                        Capital Neto Operativo = AC% - PC% <br/>
+                        Donde AC% es el porcentaje de Activos Corrientes respecto al Activo Total, y PC% es el porcentaje de Pasivos Corrientes respecto al Total Pasivo + Capital.
+                    </AlertDescription>
+                </Alert>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="bg-primary/5">
               <CardTitle className="text-2xl">1. Razones de Liquidez</CardTitle>
@@ -727,14 +817,14 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
             <CardContent className="pt-6">
               {renderRatio(
                 "Capital Neto de Trabajo",
-                "Activos Circulantes - Pasivos Circulantes",
+                "Activos Circulantes – Pasivos Circulantes",
                 analysis?.liquidez?.capitalNetoTrabajo,
                 "Positivo (mayor que 0)",
                 "Lo ideal es que el activo circulante sea mayor que el pasivo circulante, ya que el excedente puede ser utilizado en la generación de más utilidades."
               )}
 
               {renderRatio(
-                "Razón Circulante o Índice de Solvencia",
+                "Razón Circulante (Índice de Solvencia)",
                 "Activos Circulantes / Pasivo Circulante",
                 analysis?.liquidez?.razonCirculante,
                 "1.5 - 2.0",
@@ -742,8 +832,8 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
               )}
 
               {renderRatio(
-                "Razón Rápida (Prueba Ácida)",
-                "(Activos Circulantes - Inventarios) / Pasivo Circulante",
+                "Razón Rápida",
+                "(Activos Circulantes – Inventarios) / Pasivo Circulante",
                 analysis?.liquidez?.razonRapida,
                 "1.0",
                 "La razón rápida mide la capacidad de la empresa para cubrir sus pasivos circulantes con sus activos más líquidos, excluyendo los inventarios. Un valor satisfactorio es 1.0, pero este puede variar según el tipo de negocio. Una razón más alta indica mayor solvencia."
@@ -751,7 +841,6 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
             </CardContent>
           </Card>
 
-          {/* 2. RAZONES DE ACTIVIDAD */}
           <Card>
             <CardHeader className="bg-primary/5">
               <CardTitle className="text-2xl">2. Razones de Actividad</CardTitle>
@@ -763,81 +852,73 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
                 "Costo de Bienes Vendidos / Inventarios Promedio",
                 analysis?.actividad?.rotacionInventario,
                 "5 - 10",
-                "La rotación de inventarios muestra la eficiencia de la empresa en la venta y reposición de inventarios. Un valor más alto indica que los inventarios se están utilizando más rápidamente."
+                "Mide la rapidez con la que el inventario se convierte en ventas. Una rotación alta indica una gestión eficiente del inventario y buenas ventas."
               )}
-
               {renderRatio(
                 "Rotación de Cuentas por Cobrar",
                 "Ventas al crédito / Cuentas por Cobrar Promedio",
-                analysis?.actividad?.rotacionCuentasCobrar,
+                analysis?.actividad?.rotacionCxC,
                 "6 - 12",
-                "La rotación de cuentas por cobrar mide la eficacia de la empresa en la gestión de cobros. Un valor alto indica que la empresa cobra rápidamente a sus clientes."
+                "Indica cuántas veces al año la empresa cobra sus cuentas pendientes. Un valor alto sugiere una gestión eficiente de cobros."
               )}
-
               {renderRatio(
                 "Periodo Promedio de Cobro",
                 "360 / Rotación de Cuentas por Cobrar",
                 analysis?.actividad?.periodoPromedioCobro,
                 "30 - 45 días",
-                "El periodo promedio de cobro indica el tiempo promedio que tarda la empresa en cobrar sus cuentas por cobrar. Un valor menor es generalmente más favorable."
+                "Muestra el número promedio de días que tarda la empresa en cobrar sus ventas a crédito."
               )}
-
               {renderRatio(
                 "Rotación de Activos Fijos",
                 "Ventas / Activos Fijos Promedio",
                 analysis?.actividad?.rotacionActivosFijos,
                 "5 - 8",
-                "La rotación de activos fijos muestra cuán eficientemente la empresa utiliza sus activos fijos para generar ventas. Un valor más alto indica mayor eficiencia."
+                "Mide la eficiencia con la que la empresa utiliza sus activos fijos para generar ventas."
               )}
-
               {renderRatio(
                 "Rotación de Activos Totales",
                 "Ventas / Activos Totales Promedio",
                 analysis?.actividad?.rotacionActivosTotales,
                 "1.0 - 2.5",
-                "La rotación de activos totales mide la eficacia con la que una empresa utiliza todos sus activos para generar ventas. Un valor más alto indica mayor eficiencia."
+                "Indica la eficiencia general de la empresa en el uso de todos sus activos para generar ingresos."
               )}
             </CardContent>
           </Card>
 
-          {/* 3. RAZONES DE ENDEUDAMIENTO */}
           <Card>
             <CardHeader className="bg-primary/5">
               <CardTitle className="text-2xl">3. Razones de Endeudamiento</CardTitle>
-              <CardDescription>Estructura de capital y capacidad de pago de deudas</CardDescription>
+              <CardDescription>Proporción de financiamiento externo vs interno</CardDescription>
             </CardHeader>
             <CardContent className="pt-6">
               {renderRatio(
-                "Razón de Endeudamiento o Deuda",
+                "Razón de Endeudamiento",
                 "Total Pasivos / Total Activos",
                 analysis?.endeudamiento?.razonEndeudamiento,
-                "0.3 - 0.5 (30% - 50%)",
-                "La razón de endeudamiento indica el porcentaje de los activos que está financiado con deuda. Un valor más alto implica un mayor riesgo de insolvencia. Un valor bajo es generalmente favorable, ya que indica menos dependencia de la deuda."
+                "0.3 - 0.5",
+                "Mide la proporción de los activos totales que son financiados por acreedores. Un valor alto indica mayor riesgo financiero."
               )}
-
               {renderRatio(
                 "Razón Pasivo / Capital",
                 "Total Pasivos / Patrimonio Neto",
                 analysis?.endeudamiento?.razonPasivoCapital,
                 "0.5 - 1.0",
-                "Esta razón indica la proporción de los activos financiados por deuda frente al capital propio. Un valor más bajo es generalmente preferido."
+                "Compara la deuda total con el patrimonio de los accionistas. Indica el grado de apalancamiento financiero."
               )}
-
               {renderRatio(
                 "Rotación de Intereses a Utilidades",
                 "Utilidad Operativa / Gasto por Intereses",
                 analysis?.endeudamiento?.rotacionInteresesUtilidades,
                 "3 - 5",
-                "Esta razón mide la capacidad de la empresa para cubrir sus gastos por intereses con su utilidad operativa. Un valor mayor indica mayor capacidad de pago de intereses."
+                "Mide la capacidad de la empresa para pagar los intereses de su deuda con sus utilidades operativas."
               )}
             </CardContent>
           </Card>
 
-          {/* 4. RAZONES DE RENTABILIDAD */}
           <Card>
             <CardHeader className="bg-primary/5">
               <CardTitle className="text-2xl">4. Razones de Rentabilidad</CardTitle>
-              <CardDescription>Capacidad de generar utilidades y retornos sobre inversión</CardDescription>
+              <CardDescription>Capacidad para generar utilidades</CardDescription>
             </CardHeader>
             <CardContent className="pt-6">
               {renderRatio(
@@ -845,82 +926,52 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
                 "Utilidad Bruta / Ventas",
                 analysis?.rentabilidad?.margenUtilidadBruta,
                 "20% - 40%",
-                "El margen de utilidad bruta muestra la rentabilidad de la empresa antes de los gastos operativos. Un valor más alto indica una mayor rentabilidad en la producción."
+                "Indica el porcentaje de cada peso de ventas que queda después de pagar el costo de los bienes vendidos."
               )}
-
               {renderRatio(
                 "Margen de Utilidad Operativa (MUO)",
                 "Utilidad Operativa / Ventas",
                 analysis?.rentabilidad?.margenUtilidadOperativa,
                 "10% - 20%",
-                "El margen de utilidad operativa mide la rentabilidad de la empresa antes de los gastos financieros e impuestos. Un margen más alto es generalmente favorable."
+                "Muestra la eficiencia operativa de la empresa, excluyendo intereses e impuestos."
               )}
-
               {renderRatio(
                 "Margen de Utilidad Neta",
                 "Utilidad Neta / Ventas",
                 analysis?.rentabilidad?.margenUtilidadNeta,
                 "5% - 10%",
-                "El margen de utilidad neta mide la rentabilidad final de la empresa, después de todos los gastos, impuestos e intereses. Un margen más alto indica una mayor rentabilidad para los accionistas."
+                "Representa el porcentaje de ganancia final por cada peso de ventas, después de todos los gastos e impuestos."
               )}
-
               {renderRatio(
                 "Rentabilidad sobre el Activo (ROA)",
                 "Utilidad Neta / Total Activos",
                 analysis?.rentabilidad?.roa,
                 "5% - 10%",
-                "La rentabilidad sobre el activo mide la eficacia de la empresa para generar utilidades a partir de sus activos totales. Un ROA más alto indica una mayor eficiencia en el uso de los activos."
+                "Mide la rentabilidad de la empresa en relación con sus activos totales."
               )}
-
-              {analysis?.rentabilidad?.roe && renderRatio(
-                "Rentabilidad sobre el Patrimonio (ROE)",
-                "Utilidad Neta / Patrimonio",
+              {renderRatio(
+                "Rendimiento sobre Capital (ROE)",
+                "Utilidad Neta / Capital Contable",
                 analysis?.rentabilidad?.roe,
-                "15% - 20%",
-                "La rentabilidad sobre el patrimonio mide el retorno que obtienen los accionistas sobre su inversión. Un ROE más alto indica una mayor rentabilidad para los propietarios."
+                "10% - 15%",
+                "Mide la rentabilidad de la inversión de los accionistas."
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* DATOS FUENTE */}
         <TabsContent value="source" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Datos Fuente</CardTitle>
-              <CardDescription>Datos financieros importados y procesados por la IA</CardDescription>
+              <CardTitle>Datos Fuente Extraídos</CardTitle>
+              <CardDescription>
+                Visualización de los datos crudos extraídos por la IA.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              {raw && rawPeriods.length > 0 ? (
-                <Tabs defaultValue={rawPeriods[0]} className="w-full">
-                  <TabsList className="flex w-full overflow-x-auto">
-                    {rawPeriods.map(period => (
-                      <TabsTrigger key={period} value={period}>
-                        {period}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-
-                  {rawPeriods.map(period => (
-                    <TabsContent key={period} value={period} className="space-y-4">
-                      {raw[period]?.balance_sheet && (
-                        <div>
-                          <h3 className="text-lg font-semibold mb-2">Balance General</h3>
-                          {renderSourceData(raw[period].balance_sheet)}
-                        </div>
-                      )}
-                      {raw[period]?.income_statement && (
-                        <div className="mt-6">
-                          <h3 className="text-lg font-semibold mb-2">Estado de Resultados</h3>
-                          {renderSourceData(raw[period].income_statement)}
-                        </div>
-                      )}
-                    </TabsContent>
-                  ))}
-                </Tabs>
-              ) : (
-                <div className="text-muted-foreground">No hay datos fuente disponibles</div>
-              )}
+              <div className="bg-muted/30 p-4 rounded-md font-mono text-sm overflow-auto max-h-[600px]">
+                {renderSourceData(raw)}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

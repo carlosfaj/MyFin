@@ -4,31 +4,34 @@ const BALANCE_SCHEMA_STR = `
 {
   "BalanceGeneral": {
     "ActivoCorriente": {
-      "Efectivo": 0, "Banco": 0, "InversionesTemporales": 0, "Clientes": 0, "DocumentosPorCobrar": 0, "Inventarios": 0, "IVAAcreditable": 0, "Publicidad": 0, "PrimasDeSegurosYFianzas": 0, "RentasPagadasPorAnticipado": 0, "InteresesPagadosPorAnticipados": 0, "PapeleriaYUtiles": 0, "AnticipoAProveedores": 0
+      "//": "Incluye TODAS las cuentas de activo corriente encontradas (Efectivo, Bancos, Clientes, Inventarios, etc.)",
+      "Efectivo": 0, "Banco": 0, "...": 0
     },
     "ActivoFijo": {
-      "Terrenos": 0, "Edificios": 0, "Maquinaria": 0, "MobiliarioYEquipoDeOficina": 0, "EquipoDeTransporte": 0, "Vehiculos": 0
+      "//": "Incluye TODAS las cuentas de activo fijo (Terrenos, Edificios, Maquinaria, etc.)",
+      "Terrenos": 0, "...": 0
     },
     "ActivoDiferido": {
-      "GastosPreoperativos": 0, "DerechosDeAutor": 0, "Patentes": 0, "MarcasRegistradas": 0, "GastosDeOrganizacion": 0, "GastosDeConstitucion": 0, "GastosDeInstalacion": 0, "PublicidadALargoPlazo": 0, "PapeleriaYUtilesALargoPlazo": 0, "RentasPagadasPorAnticipadoALargoPlazo": 0, "InteresesPagadosPorAnticipadoALargoPlazo": 0
+      "//": "Incluye TODAS las cuentas de activo diferido",
+      "...": 0
     },
-    "OtrosActivos": {
-      "InversionesEnProceso": 0, "FondoDeAmortizacionDeObligaciones": 0
+    "OtrosActivos": { "...": 0 },
+    "PasivosCirculantes": {
+      "//": "Incluye TODAS las cuentas de pasivos circulantes (Proveedores, Impuestos, etc.)",
+      "Proveedores": 0, "...": 0
     },
-    "PasivosCortoPlazo": {
-      "Proveedores": 0, "DocumentosPorPagar": 0, "AcreedoresDiversos": 0, "AnticipoDeClientes": 0, "DividendosPorPagar": 0, "IVAPorPagar": 0, "ImpuestoSobreLaRentaPorPagar": 0, "InteresesPorPagar": 0, "SueldosPorPagar": 0, "IngresosCobradosPorAnticipado": 0
+    "PasivosFijos": {
+      "//": "Incluye TODAS las cuentas de pasivos fijos (Deuda bancaria, Hipotecas, etc.)",
+      "...": 0
     },
-    "PasivoFijo": {
-      "AcreedoresHipotecarios": 0, "AcreedoresBancarios": 0, "DocumentosPorPagarALargoPlazo": 0, "BonosPorPagar": 0
-    },
-    "PasivoDiferido": {
-      "RentasCobradasPorAnticipado": 0, "InteresesCobradosPorAnticipado": 0
-    },
+    "PasivosDiferidos": { "...": 0 },
     "CapitalContribuido": {
-      "CapitalSocial": 0, "Donaciones": 0, "PrimaEnVentaDeAcciones": 0
+      "//": "Incluye TODAS las cuentas de capital contribuido (Capital Social, Acciones, etc.)",
+      "CapitalSocial": 0, "...": 0
     },
     "CapitalGanado": {
-      "UtilidadesRetenidas": 0, "UtilidadNeta": 0
+      "//": "Incluye TODAS las cuentas de capital ganado (Utilidades Retenidas, Utilidad Neta, Reservas, etc.)",
+      "UtilidadesRetenidas": 0, "...": 0
     }
   }
 }
@@ -38,29 +41,30 @@ const INCOME_SCHEMA_STR = `
 {
   "EstadoDeResultados": {
     "VentasYVariantes": {
-      "Ventas": 0, "VentasAlCredito": 0, "Devoluciones": 0, "Rebajas": 0, "Descuentos": 0, "CostoDeVenta": 0, "UtilidadBruta": 0
+      "//": "Incluye TODAS las cuentas de ingresos (Ventas, Devoluciones, etc.)",
+      "Ventas": 0, "...": 0
     },
     "GastosOperativos": {
       "GastosDeVenta": {
-        "RentaDelAlmacen": 0, "PropagandaYPublicidad": 0, "SueldoDeVendedores": 0, "ComisionesDeVendedores": 0, "ConsumoDeLuzVenta": 0, "ImpuestosSobreIngresosMercantiles": 0, "DepreciacionDeEquiposDeVenta": 0
+        "//": "Incluye TODOS los gastos de venta",
+        "...": 0
       },
       "GastosDeAdministracion": {
-        "RentaDeOficina": 0, "SueldoDeOficina": 0, "Papeleria": 0, "ConsumoDeLuzOficina": 0, "ServiciosDeComunicacion": 0, "DepreciacionDeEdificiosYMobiliarios": 0
+        "//": "Incluye TODOS los gastos de administración",
+        "...": 0
       }
     },
     "GastosFinancieros": {
-      "InteresesPagadosPorSobreDocumentos": 0, "ComisionesBancariasPagadas": 0, "InteresesPagados": 0, "UtilidadOperativa": 0
+      "//": "Incluye TODOS los gastos e ingresos financieros",
+      "...": 0
     },
     "OtrosRubros": {
-      "OtrosGastos": {
-        "PerdidaEnVentasDeActivo": 0, "ComisionesPagadas": 0, "RentasPagadas": 0
-      },
-      "OtrosProductos": {
-        "ComisionesCobradas": 0, "RentasCobradas": 0, "UtilidadEnVentaDeAcciones": 0
-      }
+      "OtrosGastos": { "...": 0 },
+      "OtrosProductos": { "...": 0 }
     },
     "Utilidades": {
-      "UtilidadNetaAntesDeIR": 0, "IR": 0, "UtilidadNeta": 0, "DividendosRepartidos": 0, "UtilidadDelEjercicio": 0
+      "//": "Incluye impuestos y resultados finales",
+      "UtilidadNeta": 0, "...": 0
     }
   }
 }
@@ -81,10 +85,11 @@ ${schema}
 
 INSTRUCCIONES:
 1. Analiza cada concepto de los datos crudos y asígnalo al campo más apropiado de la estructura objetivo.
-2. Si un concepto no tiene una coincidencia exacta, usa tu criterio contable para clasificarlo.
-3. IMPORTANTE: Si el documento importado NO contiene una cuenta que está en el formato predeterminado, IGNÓRALA. No la incluyas en el JSON final con valor 0 ni null. Simplemente omite esa clave.
-4. Devuelve SOLAMENTE el JSON válido con la estructura llena. No incluyas explicaciones ni texto adicional.
-5. Asegúrate de que los valores sean numéricos.
+2. **EXTRACCIÓN DINÁMICA**: NO te limites a los ejemplos del esquema. Extrae **TODAS** las cuentas que encuentres en los datos crudos y colócalas en la categoría que mejor corresponda.
+3. **NOMBRE DE LAS CUENTAS**: Usa el nombre exacto que aparece en el Excel (o una versión normalizada clara) como clave en el JSON.
+4. **INCLUIR TOTALES**: SIEMPRE extrae la fila de 'Total' de cada sección (ej. "Total Activo Corriente", "Total Pasivo", "Suma del Activo") y inclúyela como una cuenta más dentro de esa sección. ESTO ES CRÍTICO para tener el valor exacto.
+5. Devuelve SOLAMENTE el JSON válido con la estructura llena. No incluyas explicaciones ni texto adicional.
+6. Asegúrate de que los valores sean numéricos.
 `;
 
   try {
@@ -122,8 +127,10 @@ export async function extractFinancialDataWithAI(rawRows, type) {
     throw new Error(`La hoja ${type} no contiene datos válidos para procesar.`);
   }
 
+  const isBalance = type === 'balance_sheet';
+
   const prompt = `
-Actúa como un experto contable forense. Tienes una hoja de cálculo cruda (array de arrays) que contiene un ${type === 'balance_sheet' ? 'Balance General' : 'Estado de Resultados'}.
+Actúa como un experto contable forense. Tienes una hoja de cálculo cruda (array de arrays) que contiene un ${isBalance ? 'Balance General' : 'Estado de Resultados'}.
 
 OBJETIVO:
 Identificar los años (periodos) y extraer los datos financieros correspondientes a cada año, mapeándolos al esquema JSON estándar.
@@ -138,16 +145,20 @@ INSTRUCCIONES CRÍTICAS:
 1. **Identificar Años**: Busca encabezados de años (ej. "2012", "2011", "Año 2023"). Pueden estar en la fila 0, 1, 2, o incluso mezclados con texto.
    - OJO: A veces los años están en columnas adyacentes (ej. Col C=2012, Col D=2011).
    - A veces hay una fila de títulos y DEBAJO los años.
-2. **Extracción**: Para cada año encontrado, recorre las filas, busca los conceptos del esquema (ej. "Efectivo", "Ventas") y extrae el valor numérico de la columna correspondiente a ese año.
-3. **Mapeo**: Asigna los valores al esquema JSON.
-4. **Salida**: Devuelve UNICAMENTE un ARRAY de objetos JSON válido.
+2. **Extracción Estricta**: Para cada año, extrae las cuentas y sus valores.
+3. **RESPETAR JERARQUÍA VISUAL**: Mapea las cuentas al esquema JSON basándote **ESTRICTAMENTE** en cómo aparecen agrupadas en el archivo original.
+   - **CRÍTICO**: Si una cuenta aparece visualmente bajo la sección de "Pasivos Corrientes" (o similar) en el Excel, **DEBES** colocarla en \`PasivosCirculantes\` en el JSON, **INCLUSO SI** el nombre de la cuenta dice "Largo Plazo" o parece pertenecer a otra categoría.
+   - **NO RECLASIFIQUES**: No muevas cuentas de categoría basándote en tu conocimiento contable. Tu trabajo es reflejar la estructura del archivo, no corregirla.
+4. **INCLUIR TOTALES**: SIEMPRE extrae la fila de 'Total' de cada sección (ej. "Total Activo Corriente", "Total Pasivos Circulantes", "Total Pasivo") y inclúyela como una cuenta más dentro de esa sección. ESTO ES CRÍTICO.
+5. **Mapeo**: Asigna los valores al esquema. Si hay cuentas que no encajan en las claves estándar, agrégalas con su nombre original.
+6. **Salida**: Devuelve UNICAMENTE un ARRAY de objetos JSON válido.
 
 FORMATO DE SALIDA ESPERADO:
 [
   {
     "period": "2012",
     "data": {
-      "BalanceGeneral": { "ActivoCorriente": { "Efectivo": 1500.00, ... } }
+      "BalanceGeneral": { "ActivoCorriente": { "Efectivo": 1500.00, "TotalActivoCorriente": 2000.00, ... } }
     }
   },
   {
