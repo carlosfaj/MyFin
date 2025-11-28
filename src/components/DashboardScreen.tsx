@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { FinancialCard } from "./FinancialCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -165,6 +165,12 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
     { ratio: 'Actividad', valor: Math.min((actividad.rotacionActivosTotales?.valor || 0) * 50, 100), fullMark: 100 },
   ];
 
+  // TODO: Implementar Origen y Aplicación en el backend
+  // const sourcesAndUses = { sources: [], applications: [] };
+
+  // 6. Origen y Aplicación (Del backend)
+  const origenAplicacion = currentAnalysis.otros?.origenAplicacion || { sources: [], applications: [] };
+
   return (
     <div className="space-y-6 p-6">
       {/* Header & Controls */}
@@ -227,6 +233,7 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
           <TabsTrigger value="ratios">Razones Financieras</TabsTrigger>
           <TabsTrigger value="horizontal">Análisis Horizontal</TabsTrigger>
           <TabsTrigger value="cno">Capital Neto Operativo</TabsTrigger>
+          <TabsTrigger value="eoa">Origen y Aplicación</TabsTrigger>
         </TabsList>
 
         {/* TAB: OVERVIEW */}
@@ -400,6 +407,99 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
                </CardContent>
              </Card>
            </div>
+        </TabsContent>
+
+        {/* TAB: ORIGEN Y APLICACIÓN */}
+        <TabsContent value="eoa">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-green-600 flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Orígenes
+                </CardTitle>
+                <CardDescription>Fuentes de recursos financieros</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Concepto</TableHead>
+                        <TableHead className="text-right">Valor</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {origenAplicacion.sources && origenAplicacion.sources.length > 0 ? (
+                        origenAplicacion.sources.map((item: any, i: number) => (
+                          <TableRow key={i}>
+                            <TableCell className="font-medium">{item.name}</TableCell>
+                            <TableCell className="text-right font-mono">${(item.value || 0).toLocaleString()}</TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={2} className="text-center text-muted-foreground py-8">
+                            No hay orígenes para mostrar
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      <TableRow className="font-bold bg-muted/50 border-t-2">
+                        <TableCell>TOTAL ORÍGENES</TableCell>
+                        <TableCell className="text-right font-mono">
+                          ${(origenAplicacion.sources?.reduce((sum: number, item: any) => sum + (item.value || 0), 0) || 0).toLocaleString()}
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-red-600 flex items-center gap-2">
+                  <TrendingDown className="h-5 w-5" />
+                  Aplicaciones
+                </CardTitle>
+                <CardDescription>Usos de recursos financieros</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Concepto</TableHead>
+                        <TableHead className="text-right">Valor</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {origenAplicacion.applications && origenAplicacion.applications.length > 0 ? (
+                        origenAplicacion.applications.map((item: any, i: number) => (
+                          <TableRow key={i}>
+                            <TableCell className="font-medium">{item.name}</TableCell>
+                            <TableCell className="text-right font-mono">${(item.value || 0).toLocaleString()}</TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={2} className="text-center text-muted-foreground py-8">
+                            No hay aplicaciones para mostrar
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      <TableRow className="font-bold bg-muted/50 border-t-2">
+                        <TableCell>TOTAL APLICACIONES</TableCell>
+                        <TableCell className="text-right font-mono">
+                          ${(origenAplicacion.applications?.reduce((sum: number, item: any) => sum + (item.value || 0), 0) || 0).toLocaleString()}
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
       </Tabs>

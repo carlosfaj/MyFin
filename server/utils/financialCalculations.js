@@ -242,40 +242,100 @@ export function calculateRatios(currentData, previousData) {
     const pcPercent = (pasivoTotal + patrimonio) ? (pasivoCorriente / (pasivoTotal + patrimonio)) * 100 : 0;
     const capitalNetoOperativo = acPercent - pcPercent;
 
-    // 3. Estado de Origen y Aplicación
-    const origenAplicacion = [];
-    if (previousData) {
-        const calcOA = (key, currentVal, prevVal, type) => {
-            const diff = currentVal - prevVal;
-            if (diff === 0) return null;
+    // 3. Estado de Origen y Aplicación de Fondos (MEJORADO)
+    const origenAplicacion = { sources: [], applications: [] };
 
-            let isOrigen = false;
-            if (type === 'activo') isOrigen = diff < 0;
-            if (type === 'pasivo' || type === 'capital') isOrigen = diff > 0;
+    if (previousData && horizontalAnalysis.balance_sheet) {
+        // 1. Siempre agregar Utilidad Neta como Origen
+        if (utilidadNeta > 0) {
+            origenAplicacion.sources.push({
+                name: 'Utilidad Neta',
+                value: utilidadNeta
+            });
+        }
 
-            return {
-                cuenta: key,
-                variacion: Math.abs(diff),
-                tipo: isOrigen ? 'Origen' : 'Aplicación'
-            };
+        // 2. Siempre agregar Depreciación como Origen  
+        const depreciacion = getVal(er, 'depreciacion') || getVal(er, 'depreciation') || getVal(er, 'amortizacion');
+        if (depreciacion > 0) {
+            origenAplicacion.sources.push({
+                name: 'Depreciación y Amortización',
+                value: depreciacion
+            });
+        }
+
+        // 3. Procesar TODAS las cuentas del Balance de manera recursiva
+        const processAccount = (obj, path = '') => {
+            if (!obj || typeof obj !== 'object') return;
+
+            for (const key in obj) {
+                if (key === 'value' || key === 'abs' || key === 'rel') continue;
+
+                const item = obj[key];
+
+                if (item && typeof item.abs === 'number' && item.abs !== 0) {
+                    // Es una cuenta con variación
+                    const accountName = path ? `${path} - ${key}` : key;
+                    const keyLower = key.toLowerCase();
+                    const absValue = Math.abs(item.abs);
+
+                    // Excluir utilidades (ya incluidas arriba)
+                    if (keyLower.includes('utilidad') || keyLower.includes('resultado') || keyLower.includes('ejercicio')) {
+                        continue;
+                    }
+
+                    // Detectar tipo de cuenta por el nombre
+                    let isAsset = keyLower.includes('activo') || keyLower.includes('efectivo') ||
+                        keyLower.includes('inventario') || keyLower.includes('cobrar') ||
+                        keyLower.includes('propiedad') || keyLower.includes('planta') ||
+                        keyLower.includes('equipo') || keyLower.includes('inversión');
+
+                    let isLiability = keyLower.includes('pasivo') || keyLower.includes('pagar') ||
+                        keyLower.includes('deuda') || keyLower.includes('documento') ||
+                        keyLower.includes('dividendo') || keyLower.includes('impuesto');
+
+                    let isEquity = keyLower.includes('patrimonio') || keyLower.includes('capital') ||
+                        keyLower.includes('reserva') || keyLower.includes('superávit');
+
+                    // Clasificar según tipo y dirección del cambio
+                    let isSource = false;
+                    if (isAsset) {
+                        // Activo: Disminución = Origen, Aumento = Aplicación
+                        isSource = item.abs < 0;
+                    } else if (isLiability) {
+                        // Pasivo: Aumento = Origen, Disminución = Aplicación
+                        isSource = item.abs > 0;
+                    } else if (isEquity) {
+                        // Capital: Aumento = Origen, Disminución = Aplicación
+                        isSource = item.abs > 0;
+                    } else {
+                        // Por defecto, tratarlo como activo
+                        isSource = item.abs < 0;
+                    }
+
+                    // Agregar a la lista correspondiente
+                    const prefix = item.abs > 0 ? 'Aumento en' : 'Disminución en';
+                    const entry = {
+                        name: `${prefix} ${accountName}`,
+                        value: absValue
+                    };
+
+                    if (isSource) {
+                        origenAplicacion.sources.push(entry);
+                    } else {
+                        origenAplicacion.applications.push(entry);
+                    }
+                } else if (item && typeof item === 'object') {
+                    // Es un objeto contenedor, procesar recursivamente
+                    const newPath = path ? `${path} - ${key}` : key;
+                    processAccount(item, newPath);
+                }
+            }
         };
 
-        const items = [
-            { k: 'Activo Corriente', cur: activoCorriente, prev: getVal(bgPrev, 'activoCorriente') || 0, t: 'activo' },
-            { k: 'Activo Fijo', cur: activoFijo, prev: activoFijoPrev || 0, t: 'activo' },
-            { k: 'Pasivo Corriente', cur: pasivoCorriente, prev: getVal(bgPrev, 'pasivoCorriente') || 0, t: 'pasivo' },
-            { k: 'Pasivo Largo Plazo', cur: pasivoTotal - pasivoCorriente, prev: (getVal(bgPrev, 'pasivoTotal') || 0) - (getVal(bgPrev, 'pasivoCorriente') || 0), t: 'pasivo' },
-            { k: 'Capital', cur: patrimonio, prev: getVal(bgPrev, 'patrimonio') || 0, t: 'capital' }
-        ];
-
-        items.forEach(i => {
-            const res = calcOA(i.k, i.cur, i.prev, i.t);
-            if (res) origenAplicacion.push(res);
-        });
-
-        if (utilidadNeta > 0) origenAplicacion.push({ cuenta: 'Utilidad Neta', variacion: utilidadNeta, tipo: 'Origen' });
-        const depreciacion = getVal(er, 'depreciacion');
-        if (depreciacion > 0) origenAplicacion.push({ cuenta: 'Depreciación', variacion: depreciacion, tipo: 'Origen' });
+        // Procesar todo el balance_sheet sin filtrar por nombre de sección
+        console.log('🔍 Procesando Balance Sheet para Origen y Aplicación...');
+        processAccount(horizontalAnalysis.balance_sheet);
+        console.log(`✅ Procesado: ${origenAplicacion.sources.length} orígenes, ${origenAplicacion.applications.length} aplicaciones`);
     }
 
     // --- RATIOS ---
