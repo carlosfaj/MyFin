@@ -1,12 +1,1 @@
-# Ignore server local files
-server/.env
-server/node_modules/
-
-# Node
-node_modules/
-*.log
-
-# Build outputs
-build/
-dist/
 node_modules

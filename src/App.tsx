@@ -23,12 +23,15 @@ import "./styles/globals.css";
 type Screen = 'dashboard' | 'analysis' | 'chat' | 'import' | 'education' | 'settings';
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return localStorage.getItem('isLoggedIn') === 'true';
+  });
   const [currentScreen, setCurrentScreen] = useState<Screen>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   const handleLogin = () => {
+    localStorage.setItem('isLoggedIn', 'true');
     setIsLoggedIn(true);
   };
 
@@ -51,6 +54,8 @@ function App() {
   }, [isLoggedIn]);
 
   const handleLogout = () => {
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('financialAnalysis');
     setIsLoggedIn(false);
     setCurrentScreen('dashboard');
   };
@@ -76,19 +81,19 @@ function App() {
   const renderScreen = () => {
     switch (currentScreen) {
       case 'dashboard':
-        return <DashboardScreen />;
+        return <DashboardScreen onNavigate={setCurrentScreen} />;
       case 'analysis':
-        return <AnalysisScreen />;
+        return <AnalysisScreen onNavigate={setCurrentScreen} />;
       case 'chat':
         return <ChatAssistant />;
       case 'import':
-        return <DataImportScreen />;
+        return <DataImportScreen onNavigate={setCurrentScreen} />;
       case 'education':
         return <EducationScreen />;
       case 'settings':
         return <SettingsScreen isDarkMode={isDarkMode} onToggleDarkMode={toggleDarkMode} />;
       default:
-        return <DashboardScreen />;
+        return <DashboardScreen onNavigate={setCurrentScreen} />;
     }
   };
 

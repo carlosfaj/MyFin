@@ -4,7 +4,7 @@ export async function callGemini(prompt, history = []) {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY;
   if (!apiKey) throw new Error('Missing GOOGLE_GENAI_API_KEY');
 
-  const preferredModel = (process.env.GENAI_MODEL || 'gemini-2.5-flash').replace(/^models\//, '');
+  const preferredModel = (process.env.GENAI_MODEL || 'gemini-1.5-flash').replace(/^models\//, '');
   const fallbackModel = 'gemini-1.5-flash';
 
   const tryOnce = async (modelName) => {
@@ -21,12 +21,12 @@ export async function callGemini(prompt, history = []) {
       { role: 'user', parts: [{ text: String(prompt || '').trim() }] },
     ];
 
-    const maxTokens = Number(process.env.GENAI_MAX_OUTPUT_TOKENS || 2048);
+    const maxTokens = Number(process.env.GENAI_MAX_OUTPUT_TOKENS || 30000);
     const generationConfig = {
       temperature: 0.7,
       topP: 0.9,
       topK: 40,
-      maxOutputTokens: isNaN(maxTokens) ? 2048 : Math.max(256, Math.min(maxTokens, 4096)),
+      maxOutputTokens: isNaN(maxTokens) ? 30000 : Math.max(1024, Math.min(maxTokens, 65536)),
     };
 
     const res = await fetch(url, {
@@ -56,8 +56,14 @@ export async function callGemini(prompt, history = []) {
     let text = '';
     try {
       text = json?.candidates?.[0]?.content?.parts?.map((p) => p?.text || '').join('\n').trim();
-    } catch {}
+    } catch { }
     if (!text) text = json?.output || json?.candidates?.[0]?.output || '';
+
+    if (!text) {
+      const jsonStr = JSON.stringify(json, null, 2);
+      console.error('[GenAI] Empty response received. Full JSON:', jsonStr);
+      throw new Error(`GenAI returned empty text. Full JSON: ${jsonStr}`);
+    }
 
     if (text) {
       text = text

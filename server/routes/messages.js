@@ -57,16 +57,53 @@ router.post('/api/chats/:id/messages', async (req, res) => {
       .limit(40)
       .toArray();
     const ordered = historyDocs.reverse();
+
+    // Obtener contexto financiero
+    let financialContext = "";
+    try {
+      const { getFinancialRecords } = await import('../models/FinancialRecord.js');
+      const { calculateRatios } = await import('../utils/financialCalculations.js');
+
+      const records = await getFinancialRecords(userId || chat.userId || 'anon');
+      if (records && records.length > 0) {
+        // Agrupar y calcular
+        const byPeriod = {};
+        records.forEach(r => {
+          if (!byPeriod[r.period]) byPeriod[r.period] = {};
+          byPeriod[r.period][r.type] = r.data;
+        });
+        const periods = Object.keys(byPeriod).sort().reverse();
+        const currentPeriod = periods[0];
+        const analysis = calculateRatios(byPeriod[currentPeriod], periods[1] ? byPeriod[periods[1]] : null);
+
+        financialContext = `
+CONTEXTO FINANCIERO DEL USUARIO (Periodo ${currentPeriod}):
+- Liquidez: Razón Corriente ${analysis.liquidez.razonCorriente.valor.toFixed(2)}
+- Rentabilidad: Margen Neto ${analysis.rentabilidad.margenNeto.valor.toFixed(2)}%, ROE ${analysis.rentabilidad.roe.valor.toFixed(2)}%
+- Endeudamiento: Nivel ${analysis.endeudamiento.nivelEndeudamiento.valor.toFixed(2)}%
+- Actividad: Rotación Activos ${analysis.actividad.rotacionActivos.valor.toFixed(2)}
+Usa estos datos para responder preguntas sobre su situación financiera.
+`;
+      }
+    } catch (err) {
+      console.error("Error inyectando contexto financiero:", err);
+    }
+
     // Hacemos explícita la nota sobre el nombre del usuario para evitar que
     // el modelo lo interprete como su propia identidad.
     const persona = chat.userName
       ? [
-          {
-            role: 'user',
-            text: `NOTA: El nombre del usuario es ${chat.userName}. No declares que tú te llamas ${chat.userName}. Saluda al usuario por su nombre.`,
-          },
-        ]
+        {
+          role: 'user',
+          text: `NOTA: El nombre del usuario es ${chat.userName}. No declares que tú te llamas ${chat.userName}. Saluda al usuario por su nombre.`,
+        },
+      ]
       : [];
+
+    if (financialContext) {
+      persona.push({ role: 'user', text: financialContext });
+    }
+
     const historyForModel = [
       ...persona,
       ...ordered.map((m) => ({ role: m.sender === 'ai' ? 'model' : 'user', text: m.text })),

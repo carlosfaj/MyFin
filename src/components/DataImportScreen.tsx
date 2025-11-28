@@ -1,28 +1,55 @@
 import { useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
-import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle } from "lucide-react";
+import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Terminal, FileSearch } from "lucide-react";
 import { Alert, AlertDescription } from "./ui/alert";
 import * as XLSX from "xlsx";
 
-export function DataImportScreen() {
-  const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+interface DataImportScreenProps {
+  onNavigate: (screen: any) => void;
+}
+
+export function DataImportScreen({ onNavigate }: DataImportScreenProps) {
   const [importing, setImporting] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [previewData, setPreviewData] = useState<any[][]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [accept, setAccept] = useState<string>(".xlsx,.xls");
-  const [sheets, setSheets] = useState<string[]>([]);
-  const [selectedSheet, setSelectedSheet] = useState<string | null>(null);
-  const workbookRef = useRef<XLSX.WorkBook | null>(null);
+  const [debugLog, setDebugLog] = useState<string[]>([]);
+  const [scanResult, setScanResult] = useState<string[]>([]);
+  
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const addLog = (msg: string, data?: any) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = `[${timestamp}] ${msg} ${data ? JSON.stringify(data, null, 2) : ''}`;
+    console.log(msg, data);
+    setDebugLog(prev => [...prev, logEntry]);
+  };
+
+  const detectSheetType = (rows: any[][]): "balance_sheet" | "income_statement" | null => {
+    const textContent = rows.slice(0, 20).map(row => row.join(' ').toLowerCase()).join(' ');
+    
+    // Palabras clave para Balance General
+    const balanceKeywords = ['activo', 'pasivo', 'patrimonio', 'capital', 'balance', 'assets', 'liabilities', 'equity'];
+    // Palabras clave para Estado de Resultados
+    const incomeKeywords = ['ventas', 'ingresos', 'costo', 'gastos', 'utilidad', 'resultado', 'income', 'revenue', 'profit', 'sales'];
+
+    let balanceScore = 0;
+    let incomeScore = 0;
+
+    balanceKeywords.forEach(k => { if (textContent.includes(k)) balanceScore++; });
+    incomeKeywords.forEach(k => { if (textContent.includes(k)) incomeScore++; });
+
+    if (balanceScore > incomeScore) return "balance_sheet";
+    if (incomeScore > balanceScore) return "income_statement";
+    
+    return null;
+  };
+
   const handleFileUpload = () => {
-    setAccept(".xlsx,.xls");
-
     setError(null);
-    setPreviewData([]);
     setSuccess(false);
-
+    setDebugLog([]);
+    setScanResult([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
       fileInputRef.current.click();
@@ -34,69 +61,98 @@ export function DataImportScreen() {
     if (!file) return;
 
     setImporting(true);
-    setUploadedFile(file.name);
+    addLog(`Iniciando análisis de archivo: ${file.name}`);
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-
       const workbook = XLSX.read(arrayBuffer, { type: "array" });
 
       if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-        throw new Error("No se encontraron hojas en el archivo.");
+        throw new Error("El archivo está vacío.");
       }
 
-      workbookRef.current = workbook;
-      setSheets(workbook.SheetNames);
+      const rawSheets: any[] = [];
+      const detectedSheets: string[] = [];
 
-      const firstSheet = workbook.SheetNames[0];
-      setSelectedSheet(firstSheet);
-      const worksheet = workbook.Sheets[firstSheet];
-      const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
-      setPreviewData(rows);
-      setSuccess(true);
+      // Iterar sobre todas las hojas
+      for (const sheetName of workbook.SheetNames) {
+        const ws = workbook.Sheets[sheetName];
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        
+        if (rows.length < 2) continue;
+
+        const type = detectSheetType(rows);
+        if (type) {
+          addLog(`Hoja "${sheetName}" detectada como: ${type}`);
+          detectedSheets.push(`${sheetName} (${type === 'balance_sheet' ? 'Balance' : 'Resultados'})`);
+          
+          // En lugar de extraer aquí, enviamos las filas crudas al backend
+          rawSheets.push({
+            type,
+            rows: rows // Enviamos todas las filas tal cual
+          });
+        } else {
+          addLog(`Hoja "${sheetName}" ignorada (no se detectó contenido financiero claro).`);
+        }
+      }
+
+      setScanResult(detectedSheets);
+
+      if (rawSheets.length === 0) {
+        throw new Error("No se encontraron hojas financieras válidas.");
+      }
+
+      addLog(`Enviando ${rawSheets.length} hojas crudas al servidor para análisis IA...`);
+
+      const res = await fetch('http://localhost:4000/api/financial-records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: 'user_demo',
+          rawSheets: rawSheets // Nuevo payload
+        })
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error("Error del servidor: " + text);
+      }
+      
+      const json = await res.json();
+      addLog('Respuesta exitosa del servidor.', json);
+
+      if (json.success) {
+        localStorage.setItem('financialAnalysis', JSON.stringify(json));
+        setSuccess(true);
+        alert(`¡Importación Exitosa!\n\nSe procesaron: \n${detectedSheets.join('\n')}`);
+        onNavigate('analysis');
+      } else {
+        throw new Error(json.error || "Error desconocido en la respuesta.");
+      }
+
     } catch (err: any) {
       console.error(err);
-      setError(err?.message || "Error al procesar el archivo");
-      setSuccess(false);
+      addLog("ERROR CRÍTICO:", err.message);
+      setError(err.message || "Error al procesar el archivo");
     } finally {
       setImporting(false);
     }
   };
 
-  const handleSheetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const sheetName = e.target.value;
-    setSelectedSheet(sheetName);
-    setError(null);
-    setSuccess(false);
-
-    const wb = workbookRef.current;
-    if (!wb) return;
-
-    try {
-      const ws = wb.Sheets[sheetName];
-      if (!ws) throw new Error("Hoja no encontrada en el workbook.");
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-      setPreviewData(rows);
-    } catch (err: any) {
-      console.error(err);
-      setError(err?.message || "Error al cambiar de hoja");
-    }
-  };
-
   return (
     <div className="space-y-6 p-6">
-      {/* Hidden file input used to pick files */}
       <input
         ref={fileInputRef}
         type="file"
-        accept={accept}
+        accept=".xlsx,.xls"
         className="hidden"
         onChange={handleFileChange}
       />
+      
       <div>
-        <h1 className="text-3xl font-bold">Importar Datos Financieros</h1>
+        <h1 className="text-3xl font-bold">Importación Automática (AI Powered)</h1>
         <p className="text-muted-foreground">
-          Sube tus archivos de estados financieros para análisis automático
+          El sistema detectará, clasificará y extraerá automáticamente tus estados financieros usando IA.
         </p>
       </div>
 
@@ -104,175 +160,91 @@ export function DataImportScreen() {
         <Alert className="bg-success/10 border-success">
           <CheckCircle2 className="h-4 w-4 text-success" />
           <AlertDescription className="text-success">
-            ¡Archivo importado exitosamente! Los datos están siendo procesados.
+            ¡Datos procesados correctamente! Redirigiendo...
           </AlertDescription>
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="hover:shadow-lg transition-all cursor-pointer hover:scale-105">
+      {error && (
+        <Alert className="bg-destructive/10 border-destructive">
+          <AlertCircle className="h-4 w-4 text-destructive" />
+          <AlertDescription className="text-destructive font-semibold">
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="hover:shadow-lg transition-all cursor-pointer hover:scale-[1.02] border-primary/20">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <FileSpreadsheet className="h-8 w-8 text-success" />
-              <span className="text-xs bg-success/10 text-success px-2 py-1 rounded">
-                Recomendado
-              </span>
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-primary/10 rounded-full">
+                <FileSearch className="h-8 w-8 text-primary" />
+              </div>
+              <div>
+                <CardTitle>Importar Archivo Excel</CardTitle>
+                <CardDescription>Soporta múltiples hojas (Balance y Resultados)</CardDescription>
+              </div>
             </div>
-            <CardTitle className="text-lg">Excel (.xlsx)</CardTitle>
-            <CardDescription>Archivos de Microsoft Excel</CardDescription>
           </CardHeader>
           <CardContent>
             <Button 
-              className="w-full rounded-lg" 
+              className="w-full h-12 text-lg" 
               onClick={handleFileUpload}
               disabled={importing}
             >
-              <Upload className="mr-2 h-4 w-4" />
-              Subir XLSX
+              {importing ? "Analizando con IA..." : "Seleccionar Archivo"}
             </Button>
+            <p className="text-xs text-center mt-3 text-muted-foreground">
+              Formatos: .xlsx, .xls
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Estado del Análisis</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {scanResult.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-success">Hojas Detectadas:</p>
+                <ul className="list-disc list-inside text-sm text-muted-foreground">
+                  {scanResult.map((s, i) => <li key={i}>{s}</li>)}
+                </ul>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-24 text-muted-foreground text-sm opacity-60">
+                <FileSpreadsheet className="h-8 w-8 mb-2" />
+                Esperando archivo...
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
-      
-      <Card>
-        <CardHeader>
-          <CardTitle>Instrucciones de Importación</CardTitle>
-          <CardDescription>Sigue estos pasos para una importación exitosa</CardDescription>
+
+      {/* Debug Console */}
+      <Card className="border-dashed border-muted-foreground/30 bg-muted/30">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <Terminal className="h-3 w-3" />
+            Log de Procesamiento
+          </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              <h3 className="font-semibold flex items-center gap-2">
-                <span className="bg-primary text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">1</span>
-                Formato del Archivo
-              </h3>
-              <p className="text-sm text-muted-foreground ml-8">
-                Asegúrate de que tu archivo contenga columnas para: Concepto, Año Actual, Año Anterior. 
-                Los nombres pueden variar pero deben ser identificables.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="font-semibold flex items-center gap-2">
-                <span className="bg-primary text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">2</span>
-                Datos Requeridos
-              </h3>
-              <p className="text-sm text-muted-foreground ml-8">
-                Incluye al menos: Balance General (Activos, Pasivos, Patrimonio) y Estado de Resultados 
-                (Ingresos, Costos, Gastos).
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="font-semibold flex items-center gap-2">
-                <span className="bg-primary text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">3</span>
-                Validación
-              </h3>
-              <p className="text-sm text-muted-foreground ml-8">
-                El sistema validará automáticamente que los totales cuadren y que no haya datos faltantes. 
-                Recibirás un reporte de validación.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="font-semibold flex items-center gap-2">
-                <span className="bg-primary text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">4</span>
-                Análisis Automático
-              </h3>
-              <p className="text-sm text-muted-foreground ml-8">
-                Una vez importado, el sistema calculará automáticamente todas las razones financieras 
-                y generará visualizaciones.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-gradient-to-r from-primary/5 to-success/5">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-primary" />
-            <CardTitle>Plantilla de Ejemplo</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            ¿Primera vez importando datos? Descarga nuestra plantilla pre-formateada 
-            para facilitar el proceso.
-          </p>
-          <div className="flex gap-3">
-            <Button variant="outline" className="rounded-lg">
-              <FileSpreadsheet className="mr-2 h-4 w-4" />
-              Descargar Plantilla Excel
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {uploadedFile && (
-        <Card className="border-primary h-[70vh]">
-          <CardHeader>
-            <CardTitle>Vista Previa de Datos Importados</CardTitle>
-            <CardDescription>Archivo: {uploadedFile}</CardDescription>
-          </CardHeader>
-          <CardContent className="h-full flex flex-col">
-            <div className="space-y-4 text-sm flex-1 flex flex-col">
-              {sheets && sheets.length > 1 && (
-                <div className="flex items-center gap-3">
-                  <label className="text-sm">Hoja:</label>
-                      <select
-                        value={selectedSheet ?? ""}
-                        onChange={handleSheetChange}
-                        className="border rounded px-2 py-1 text-sm"
-                      >
-                        {sheets.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
+        <CardContent>
+          <div className="bg-black/90 text-green-400 p-4 rounded-md font-mono text-xs h-64 overflow-y-auto whitespace-pre-wrap shadow-inner">
+            {debugLog.length === 0 ? (
+              <span className="text-gray-600 italic">Listo para iniciar...</span>
+            ) : (
+              debugLog.map((log, i) => (
+                <div key={i} className="mb-1 border-b border-green-900/20 pb-0.5 last:border-0">
+                  {log}
                 </div>
-              )}
-              <div className="flex justify-between p-2 bg-muted rounded">
-                <span>Total de filas:</span>
-                <span className="font-semibold">{previewData.length}</span>
-              </div>
-
-              <div className="overflow-auto border rounded flex-1">
-                {previewData && previewData.length > 0 ? (
-                  <table className="min-w-max text-sm table-auto border-collapse w-full">
-                    <thead>
-                      <tr>
-                        {previewData[0].map((col: any, idx: number) => (
-                          <th key={idx} className="border p-2 text-left bg-muted break-words whitespace-normal">{col || `Col ${idx+1}`}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewData.map((row, rIdx) => (
-                        <tr key={rIdx} className={rIdx % 2 === 0 ? "bg-white" : "bg-muted"}>
-                          {row.map((cell: any, cIdx: number) => (
-                            <td key={cIdx} className="border p-2 break-words whitespace-normal">{cell !== null && cell !== undefined ? String(cell) : ""}</td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="text-muted-foreground p-2">No se pudo generar una vista previa o el archivo está vacío.</div>
-                )}
-              </div>
-
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => { /* placeholder: trigger import flow to backend */ }}>
-                  Importar datos
-                </Button>
-                <Button variant="ghost" onClick={() => { setPreviewData([]); setUploadedFile(null); setSuccess(false); }}>
-                  Cancelar
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

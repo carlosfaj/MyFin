@@ -5,10 +5,11 @@ import { db } from './utils/mongo.js';
 import { initMongo } from './utils/mongo.js';
 import chatsRouter from './routes/chats.js';
 import messagesRouter from './routes/messages.js';
+import financialRouter from './routes/financial.js';
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 const PORT = process.env.PORT || 4000;
 
@@ -24,6 +25,7 @@ app.get('/api/health', async (req, res) => {
 // Routers
 app.use(chatsRouter);
 app.use(messagesRouter);
+app.use(financialRouter);
 
 initMongo()
   .catch((e) => console.error('Error conectando a MongoDB:', e.message))
