@@ -306,7 +306,8 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
         });
     };
 
-    const renderRows = (structure: any, depth = 0, path: string[] = []) => {
+    // Función de renderizado recursivo
+    const renderRows = (structure: any, depth = 0, path: string[] = [], customBaseMap?: Record<string, number>) => {
       // Filtrar llaves de totales para no renderizarlas como items normales
       const keysToRender = Object.keys(structure).filter(k => !isTotalKey(k));
 
@@ -355,7 +356,7 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
                 </TableCell>
               </TableRow>
               
-              {renderRows(val, depth + 1, currentPath)}
+              {renderRows(val, depth + 1, currentPath, customBaseMap)}
               
               <TableRow className="bg-muted/30 font-semibold border-t">
                 <TableCell style={{ paddingLeft: `${(depth * 1.5) + 1}rem` }}>
@@ -363,7 +364,8 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
                 </TableCell>
                 {rawPeriods.map(period => {
                   const value = groupTotals[period] || 0;
-                  const base = type === 'balance' ? periodTotals[period].totalAssets : periodTotals[period].netSales;
+                  // Usar base personalizada si existe, sino usar la lógica por defecto
+                  const base = customBaseMap ? customBaseMap[period] : (type === 'balance' ? periodTotals[period].totalAssets : periodTotals[period].netSales);
                   const percentage = base ? (value / base) * 100 : 0;
                   
                   return (
@@ -411,7 +413,8 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
               }
 
               const numValue = (typeof value === 'number') ? value : 0;
-              const base = type === 'balance' ? periodTotals[period].totalAssets : periodTotals[period].netSales;
+              // Usar base personalizada si existe, sino usar la lógica por defecto
+              const base = customBaseMap ? customBaseMap[period] : (type === 'balance' ? periodTotals[period].totalAssets : periodTotals[period].netSales);
               const percentage = base ? (numValue / base) * 100 : 0;
 
               return (
@@ -457,6 +460,10 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
             return acc;
         }, {} as Record<string, { assets: number; liabilities: number; equity: number }>);
 
+        // Mapas de bases para cada sección
+        const assetBaseMap = rawPeriods.reduce((acc, p) => ({ ...acc, [p]: calculatedTotals[p].assets }), {});
+        const liabilityEquityBaseMap = rawPeriods.reduce((acc, p) => ({ ...acc, [p]: calculatedTotals[p].liabilities + calculatedTotals[p].equity }), {});
+
         return (
             <div className="rounded-md border overflow-x-auto">
               <Table>
@@ -479,8 +486,8 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
                 </TableHeader>
                 <TableBody>
                   {/* ACTIVOS */}
-                  {assets.map(key => renderRows({ [key]: baseStructure[key] }))}
-                  {others.map(key => renderRows({ [key]: baseStructure[key] }))}
+                  {assets.map(key => renderRows({ [key]: baseStructure[key] }, 0, [], assetBaseMap))}
+                  {others.map(key => renderRows({ [key]: baseStructure[key] }, 0, [], assetBaseMap))}
                   
                   <TableRow className="bg-muted/40 font-bold border-t-2 border-primary/20">
                     <TableCell>TOTAL ACTIVOS</TableCell>
@@ -495,13 +502,13 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
                   <TableRow><TableCell colSpan={1 + (rawPeriods.length * 2)} className="h-4"></TableCell></TableRow>
 
                   {/* PASIVOS */}
-                  {liabilities.map(key => renderRows({ [key]: baseStructure[key] }))}
+                  {liabilities.map(key => renderRows({ [key]: baseStructure[key] }, 0, [], liabilityEquityBaseMap))}
                   
                   <TableRow className="bg-muted/40 font-bold border-t-2 border-primary/20">
                     <TableCell>TOTAL PASIVOS</TableCell>
                     {rawPeriods.map(period => {
                         const val = calculatedTotals[period].liabilities;
-                        const base = calculatedTotals[period].assets;
+                        const base = calculatedTotals[period].liabilities + calculatedTotals[period].equity;
                         return (
                             <Fragment key={period}>
                                 <TableCell className="text-right font-mono text-sm">{formatCurrency(val)}</TableCell>
@@ -514,13 +521,13 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
                   <TableRow><TableCell colSpan={1 + (rawPeriods.length * 2)} className="h-4"></TableCell></TableRow>
 
                   {/* CAPITAL */}
-                  {equity.map(key => renderRows({ [key]: baseStructure[key] }))}
+                  {equity.map(key => renderRows({ [key]: baseStructure[key] }, 0, [], liabilityEquityBaseMap))}
 
                   <TableRow className="bg-muted/40 font-bold border-t-2 border-primary/20">
                     <TableCell>TOTAL CAPITAL</TableCell>
                     {rawPeriods.map(period => {
                         const val = calculatedTotals[period].equity;
-                        const base = calculatedTotals[period].assets;
+                        const base = calculatedTotals[period].liabilities + calculatedTotals[period].equity;
                         return (
                             <Fragment key={period}>
                                 <TableCell className="text-right font-mono text-sm">{formatCurrency(val)}</TableCell>
@@ -535,11 +542,11 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
                     <TableCell>TOTAL PASIVO + CAPITAL</TableCell>
                     {rawPeriods.map(period => {
                         const val = calculatedTotals[period].liabilities + calculatedTotals[period].equity;
-                        const base = calculatedTotals[period].assets;
+                        const base = val; // Siempre es 100% respecto a sí mismo
                         return (
                             <Fragment key={period}>
                                 <TableCell className="text-right font-mono text-sm">{formatCurrency(val)}</TableCell>
-                                <TableCell className="text-right font-mono text-sm text-muted-foreground border-r">{formatSimplePercent(base ? (val/base)*100 : 0)}</TableCell>
+                                <TableCell className="text-right font-mono text-sm text-muted-foreground border-r">100.00%</TableCell>
                             </Fragment>
                         );
                     })}
@@ -578,6 +585,8 @@ export function AnalysisScreen({ onNavigate }: AnalysisScreenProps) {
       </div>
     );
   };
+
+
 
 
   // Helper para renderizar razón financiera (sin cambios)
