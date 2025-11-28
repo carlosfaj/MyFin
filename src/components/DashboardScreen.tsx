@@ -171,6 +171,23 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
   // 6. Origen y Aplicación (Del backend)
   const origenAplicacion = currentAnalysis.otros?.origenAplicacion || { sources: [], applications: [] };
 
+  // 7. Estado de Flujo de Efectivo (Del backend)
+  const cashFlow = currentAnalysis.otros?.cashFlowStatement || {
+    operating: [],
+    investing: [],
+    financing: [],
+    operatingTotal: 0,
+    investingTotal: 0,
+    financingTotal: 0,
+    netCashFlow: 0
+  };
+
+  // Helper para truncar nombres largos
+  const truncateName = (name: string, maxLength: number = 50): string => {
+    if (name.length <= maxLength) return name;
+    return name.substring(0, maxLength - 3) + '...';
+  };
+
   return (
     <div className="space-y-6 p-6">
       {/* Header & Controls */}
@@ -234,6 +251,7 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
           <TabsTrigger value="horizontal">Análisis Horizontal</TabsTrigger>
           <TabsTrigger value="cno">Capital Neto Operativo</TabsTrigger>
           <TabsTrigger value="eoa">Origen y Aplicación</TabsTrigger>
+          <TabsTrigger value="cashflow">Flujo de Efectivo</TabsTrigger>
         </TabsList>
 
         {/* TAB: OVERVIEW */}
@@ -499,6 +517,191 @@ export function DashboardScreen({ onNavigate }: DashboardScreenProps) {
                 </ScrollArea>
               </CardContent>
             </Card>
+          </div>
+        </TabsContent>
+
+        {/* TAB: FLUJO DE EFECTIVO */}
+        <TabsContent value="cashflow">
+          <div className="space-y-6">
+            {/* Summary Card */}
+            <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950">
+              <CardHeader>
+                <CardTitle className="text-2xl">Estado de Flujo de Efectivo</CardTitle>
+                <CardDescription>Método Indirecto - Cambios entre periodos</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg">
+                    <p className="text-sm text-muted-foreground">Actividades Operativas</p>
+                    <p className={`text-2xl font-bold ${cashFlow.operatingTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${cashFlow.operatingTotal.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg">
+                    <p className="text-sm text-muted-foreground">Actividades de Inversión</p>
+                    <p className={`text-2xl font-bold ${cashFlow.investingTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${cashFlow.investingTotal.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg">
+                    <p className="text-sm text-muted-foreground">Actividades de Financiación</p>
+                    <p className={`text-2xl font-bold ${cashFlow.financingTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${cashFlow.financingTotal.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg">
+                    <p className="text-sm opacity-90">Flujo Neto de Efectivo</p>
+                    <p className="text-2xl font-bold">
+                      ${cashFlow.netCashFlow.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Activity Details */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Operating Activities */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-green-600 flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
+                    Actividades Operativas
+                  </CardTitle>
+                  <CardDescription>Flujo de efectivo de operaciones</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Concepto</TableHead>
+                          <TableHead className="text-right">Monto</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {cashFlow.operating && cashFlow.operating.length > 0 ? (
+                          cashFlow.operating.map((item: any, i: number) => (
+                            <TableRow key={i}>
+                              <TableCell className="font-medium">{truncateName(item.name)}</TableCell>
+                              <TableCell className={`text-right font-mono ${item.value >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                ${item.value.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={2} className="text-center text-muted-foreground py-8">
+                              No hay actividades operativas
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        <TableRow className="font-bold bg-green-50 dark:bg-green-950 border-t-2">
+                          <TableCell>TOTAL OPERATIVO</TableCell>
+                          <TableCell className={`text-right font-mono ${cashFlow.operatingTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            ${cashFlow.operatingTotal.toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              {/* Investing Activities */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-blue-600 flex items-center gap-2">
+                    <TrendingDown className="h-5 w-5" />
+                    Actividades de Inversión
+                  </CardTitle>
+                  <CardDescription>Compra/venta de activos</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Concepto</TableHead>
+                          <TableHead className="text-right">Monto</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {cashFlow.investing && cashFlow.investing.length > 0 ? (
+                          cashFlow.investing.map((item: any, i: number) => (
+                            <TableRow key={i}>
+                              <TableCell className="font-medium">{truncateName(item.name)}</TableCell>
+                              <TableCell className={`text-right font-mono ${item.value  >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                ${item.value.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={2} className="text-center text-muted-foreground py-8">
+                              No hay actividades de inversión
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        <TableRow className="font-bold bg-blue-50 dark:bg-blue-950 border-t-2">
+                          <TableCell>TOTAL INVERSIÓN</TableCell>
+                          <TableCell className={`text-right font-mono ${cashFlow.investingTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            ${cashFlow.investingTotal.toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              {/* Financing Activities */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-purple-600 flex items-center gap-2">
+                    <PieChart className="h-5 w-5" />
+                    Actividades de Financiación
+                  </CardTitle>
+                  <CardDescription>Deuda, capital y dividendos</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[400px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Concepto</TableHead>
+                          <TableHead className="text-right">Monto</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {cashFlow.financing && cashFlow.financing.length > 0 ? (
+                          cashFlow.financing.map((item: any, i: number) => (
+                            <TableRow key={i}>
+                              <TableCell className="font-medium">{truncateName(item.name)}</TableCell>
+                              <TableCell className={`text-right font-mono ${item.value >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                ${item.value.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={2} className="text-center text-muted-foreground py-8">
+                              No hay actividades de financiación
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        <TableRow className="font-bold bg-purple-50 dark:bg-purple-950 border-t-2">
+                          <TableCell>TOTAL FINANCIACIÓN</TableCell>
+                          <TableCell className={`text-right font-mono ${cashFlow.financingTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            ${cashFlow.financingTotal.toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </TabsContent>
 
